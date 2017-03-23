@@ -57861,13 +57861,10 @@ angular.module('app')
 
 angular.module('app')
     .controller('MainController', function($scope, GifService) {
-      GifService.getAll().then(function(res) {
+        GifService.getAll().then(function(res) {
             $scope.all = res.data;
-            // console.log($scope.all);
-            var id = $scope.all.result.webcams[0].id;
-            console.log(id);
+            $scope.id = $scope.all.result.webcams[0].id;
             $scope.show = 'https://api.lookr.com/embed/timelapse/' + id + '/lifetime?autoplay=1';
-            console.log($scope.show);
         });
     });
 
@@ -58005,7 +58002,10 @@ angular.module("app").run(["$templateCache", function($templateCache) {
     "<a href=\"{{show}}\">HERE BITCH</a>\n" +
     "\n" +
     "<object width=\"425\" height=\"344\" data=\"https://www.youtube.com/v/qSjN6r9Up6g&hl=en&fs=1\"></object>\n" +
-    "<iframe src=\"{{show}}\" width=\"425\" height=\"344\"></iframe>\n" +
+    "<iframe ng-src=\"{{show}}\" width=\"425\" height=\"344\"></iframe>\n" +
+    "<iframe ng-src=\"https://api.lookr.com/embed/timelapse/\" + {{id}} + \"/lifetime?autoplay=1\" width=\"425\" height=\"344\"></iframe>\n" +
+    "<iframe src='https://api.lookr.com/embed/timelapse/1171032474/lifetime?autoplay=1' width=\"425\" height=\"344\"></iframe>\n" +
+    "\n" +
     "<!-- <!DOCTYPE html>\n" +
     "<html>https://www.youtube.com/watch?v=qSjN6r9Up6g\n" +
     "  <head>\n" +
