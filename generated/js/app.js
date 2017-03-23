@@ -57997,8 +57997,7 @@ angular.module('app')
 angular.module("app").run(["$templateCache", function($templateCache) {
 
   $templateCache.put("anon/home.html",
-    "<video src = {{$scope.all.result.webcams[0]}}</video>\n" +
-    "\n" +
+    "<iframe src=\"https://api.lookr.com/embed/timelapse/1171032474/lifetime?autoplay=1\" width=\"\" height=\"\"></iframe>\n" +
     "\n" +
     "<!-- <!DOCTYPE html>\n" +
     "<html>\n" +
