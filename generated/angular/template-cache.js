@@ -1,11 +1,13 @@
 angular.module("app").run(["$templateCache", function($templateCache) {
 
   $templateCache.put("anon/home.html",
-    "<video src = {{$scope.all.result.webcams[0]}}</video>\n" +
+    "<!-- <video src = {{$scope.all.result.webcams[0]}}</video> -->\n" +
+    "<a href=\"{{show}}\">HERE BITCH</a>\n" +
     "\n" +
-    "\n" +
+    "<object width=\"425\" height=\"344\" data=\"https://www.youtube.com/v/qSjN6r9Up6g&hl=en&fs=1\"></object>\n" +
+    "<iframe src=\"{{show}}\" width=\"425\" height=\"344\"></iframe>\n" +
     "<!-- <!DOCTYPE html>\n" +
-    "<html>\n" +
+    "<html>https://www.youtube.com/watch?v=qSjN6r9Up6g\n" +
     "  <head>\n" +
     "    <title>Simple Map</title>\n" +
     "    <meta name=\"viewport\" content=\"initial-scale=1.0\">\n" +

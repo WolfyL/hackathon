@@ -57863,7 +57863,11 @@ angular.module('app')
     .controller('MainController', function($scope, GifService) {
       GifService.getAll().then(function(res) {
             $scope.all = res.data;
-            console.log($scope.all);
+            // console.log($scope.all);
+            var id = $scope.all.result.webcams[0].id;
+            console.log(id);
+            $scope.show = 'https://api.lookr.com/embed/timelapse/' + id + '/lifetime?autoplay=1';
+            console.log($scope.show);
         });
     });
 
@@ -57997,11 +58001,13 @@ angular.module('app')
 angular.module("app").run(["$templateCache", function($templateCache) {
 
   $templateCache.put("anon/home.html",
-    "<video src = {{$scope.all.result.webcams[0]}}</video>\n" +
+    "<!-- <video src = {{$scope.all.result.webcams[0]}}</video> -->\n" +
+    "<a href=\"{{show}}\">HERE BITCH</a>\n" +
     "\n" +
-    "\n" +
+    "<object width=\"425\" height=\"344\" data=\"https://www.youtube.com/v/qSjN6r9Up6g&hl=en&fs=1\"></object>\n" +
+    "<iframe src=\"{{show}}\" width=\"425\" height=\"344\"></iframe>\n" +
     "<!-- <!DOCTYPE html>\n" +
-    "<html>\n" +
+    "<html>https://www.youtube.com/watch?v=qSjN6r9Up6g\n" +
     "  <head>\n" +
     "    <title>Simple Map</title>\n" +
     "    <meta name=\"viewport\" content=\"initial-scale=1.0\">\n" +
