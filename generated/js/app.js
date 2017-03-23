@@ -57857,69 +57857,7 @@ angular.module('app')
 
 angular.module('app')
     .controller('MainController', function($scope, GifService) {
-        var n = 0;
-        GifService.getAll().then(function(res) {
-            $scope.all = res.data;
-        });
-        GifService.getLucky().then(function(res) {
-            $scope.lucky = res.data;
-            // console.log($scope.lucky);
-        });
-
-        $scope.addNumber = function() {
-            n = $scope.number;
-            GifService.getX(n).then(function(res) {
-                $scope.X = res.data;
-                console.log($scope.X);
-            });
-        };
-
-
-        $scope.loupe = function PromptMessage() {
-            var saisie = prompt("Saisissez votre texte :", "");
-            if (saisie !== null) {
-                // $scope.goSearch = function() {
-                    // search = $scope.search;
-                    console.log(saisie);
-                    GifService.getSearch(saisie).then(function(res) {
-                        var i = Math.floor(Math.random(0, 101) * 100);
-                        console.log(i);
-                        $scope.getSearch = res.data.data[i];
-                        console.log($scope.getSearch);
-                    // });
-                });
-            }
-        };
-
-
-
-        // };
-
-        $scope.copy = function() {
-            var toCopy = document.getElementById('to-copy'),
-                btnCopy = document.getElementById('copy');
-
-            toCopy.select();
-            document.execCommand('copy');
-            return false;
-        };
-
-        $scope.next = function() {
-            GifService.getLucky().then(function(res) {
-                $scope.lucky = res.data;
-                // console.log($scope.lucky);
-            });
-        };
-
-        $scope.goSearch = function() {
-            search = $scope.search;
-            GifService.getSearch(search).then(function(res) {
-                var i = Math.floor(Math.random(0, 101) * 100);
-                console.log(i);
-                $scope.getSearch = res.data.data[i];
-                console.log($scope.getSearch);
-            });
-        };
+        
     });
 
 angular.module('app')
@@ -58013,15 +57951,7 @@ angular.module('app')
                     }
                 }
             });
-            // .state('anon.search', {
-            //     url: '/search',
-            //     views: {
-            //         'content@': {
-            //             templateUrl: 'anon/search.html',
-            //             controller: 'SearchController'
-            //         }
-            //     }
-            // });
+          
         $stateProvider
             .state('user', {
                 abstract: true,
@@ -58060,23 +57990,43 @@ angular.module('app')
 angular.module("app").run(["$templateCache", function($templateCache) {
 
   $templateCache.put("anon/home.html",
-    "<!-- <img src=\"{{all.data[0].images.downsized.url}}\" alt=\"\"> -->\n" +
+    "<!DOCTYPE html>\n" +
+    "<html>\n" +
+    "  <head>\n" +
+    "    <title>Simple Map</title>\n" +
+    "    <meta name=\"viewport\" content=\"initial-scale=1.0\">\n" +
+    "    <meta charset=\"utf-8\">\n" +
+    "    <style>\n" +
+    "      /* Always set the map height explicitly to define the size of the div\n" +
+    "       * element that contains the map. */\n" +
+    "      #map {\n" +
+    "        height: 100%;\n" +
+    "      }\n" +
+    "      /* Optional: Makes the sample page fill the window. */\n" +
+    "      html, body {\n" +
+    "        height: 100%;\n" +
+    "        margin: 0;\n" +
+    "        padding: 0;\n" +
+    "      }\n" +
+    "    </style>\n" +
+    "  </head>\n" +
+    "  <body>\n" +
+    "    <div id=\"map\"></div>\n" +
+    "    <script>\n" +
+    "      var map;\n" +
+    "      function initMap() {\n" +
+    "        map = new google.maps.Map(document.getElementById('map'), {\n" +
+    "          center: {lat: -34.397, lng: 150.644},\n" +
+    "          zoom: 8\n" +
+    "        });\n" +
+    "      }\n" +
     "\n" +
-    "<!-- <img src=\"{{lucky.data.image_url}}\" alt=\"\">\n" +
-    "<input type=\"text\" id='to-copy' value=\"{{lucky.data.image_url}}\">\n" +
-    "<button ng-click='copy()'>Copy</button>\n" +
-    "<button ng-click='next()' type=\"button\">New Gif</button> -->\n" +
     "\n" +
-    "<!-- <input ng-model='search'><button ng-click='goSearch()'>Go</button>\n" +
-    "<div ng-repeat=\"element in getSearch.data\">\n" +
-    "    <img src=\"{{element.images.downsized.url}}\" alt=\"\">\n" +
-    "</div> -->\n" +
-    "\n" +
-    "\n" +
-    "<!-- <input ng-model='number'><button ng-click='addNumber()'><span class=\"glyphicon glyphicon-music\">Nombre de gifs</span></button>\n" +
-    "<div ng-repeat=\"element in X.data\">\n" +
-    "  <img src=\"{{element.images.downsized.url}}\" alt=\"\">\n" +
-    "</div> -->\n"
+    "    </script>\n" +
+    "    <script src=\"https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY&callback=initMap\"\n" +
+    "    async defer></script>\n" +
+    "  </body>\n" +
+    "  </html>\n"
   );
 
   $templateCache.put("anon/login.html",
@@ -58099,43 +58049,11 @@ angular.module("app").run(["$templateCache", function($templateCache) {
   );
 
   $templateCache.put("anon/main.html",
-    "<div class=\"container\">\n" +
-    "    <div class=\"row\">\n" +
-    "        <div class=\"col-xs-offset-10 col-xs-1\">\n" +
-    "            <img ng-click='loupe()' id=\"GifSearch\" src=\"https://media.giphy.com/media/reIVCrGs6pp28/giphy.gif\" alt=\"\">\n" +
-    "              <img src=\"{{getSearch.images.downsized.url}}\" alt=\"\">\n" +
-    "            <!-- <input ng-model='search'><button ng-click='goSearch()'>Go</button> -->\n" +
-    "        </div>\n" +
-    "    </div>\n" +
-    "    <div class=\"row\">\n" +
-    "        <div class=\"col-xs-offset-2 col-xs-1\">\n" +
-    "            <a href=\"#\" ng-click=\"addDislike()\">dislike<img src=\"\" alt=\"\"></a>\n" +
-    "        </div>\n" +
-    "        <div class=\"col-xs-6\">\n" +
-    "            <img src=\"{{lucky.data.image_url}}\" alt=\"\" id=\"GifMain\">\n" +
-    "        </div>\n" +
-    "        <div class=\"col-xs-offest-1 col-xs-1\">\n" +
-    "            <a href=\"#\" ng-click=\"addLike()\">like<img src=\"\" alt=\"\"></a>\n" +
-    "        </div>\n" +
-    "    </div>\n" +
-    "    <div class=\"row\">\n" +
-    "      <div class=\"col-xs-offset-5 col-xs-4\">\n" +
-    "        <p>like/dislike</p>\n" +
-    "      </div>\n" +
-    "    </div>\n" +
-    "    <div class=\"row\">\n" +
-    "      <div class=\"col-xs-offset-4 col-xs-8\">\n" +
-    "        <input type=\"text\" id='to-copy' value=\"{{lucky.data.image_url}}\">\n" +
-    "        <button id=\"btnCopy\" class=\"btn\" ng-click='copy()'>Copy</button>\n" +
-    "      </div>\n" +
-    "\n" +
-    "    </div>\n" +
-    "\n" +
-    "</div>\n"
+    ""
   );
 
   $templateCache.put("anon/navbar.html",
-    "<nav class=\"navbar navbar-inverse\" role=\"navigation\" ng-controller=\"NavbarController\">\n" +
+    "<!-- <nav class=\"navbar navbar-inverse\" role=\"navigation\" ng-controller=\"NavbarController\">\n" +
     "    <div class=\"container-fluid\" id=\"navBackground\">\n" +
     "        <div class=\"navbar-header\">\n" +
     "            <button type=\"button\" class=\"navbar-toggle\" data-toggle=\"collapse\" data-target=\"#navbar\">\n" +
@@ -58163,7 +58081,7 @@ angular.module("app").run(["$templateCache", function($templateCache) {
     "\n" +
     "        </div>\n" +
     "    </div>\n" +
-    "</nav>\n"
+    "</nav> -->\n"
   );
 
   $templateCache.put("anon/register.html",
