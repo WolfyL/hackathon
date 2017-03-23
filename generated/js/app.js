@@ -57789,30 +57789,34 @@ angular.module('app')
 
 angular.module('app')
     .service('GifService', function($http) {
-        return {
-            getAll: function() {
-                return $http.get('http://api.giphy.com/v1/gifs/search?q=sexy+girl&api_key=dc6zaTOxFJmzC');
-            },
-            getX: function(n) {
-                return $http.get('http://api.giphy.com/v1/gifs/search?q=sexy+girl&api_key=dc6zaTOxFJmzC&limit=' + n);
-            },
-            getOne: function(id) {
-                return $http.get('http://api.giphy.com/v1/gifs/search?q=sexy+girl&api_key=dc6zaTOxFJmzC' + id);
-            },
-            getSearch : function(search){
-                return $http.get('http://api.giphy.com/v1/gifs/search?q=' + search + '&api_key=dc6zaTOxFJmzC&limit=100');
-            },
-            getLucky: function() {
-                return $http.get('http://api.giphy.com/v1/gifs/random?api_key=dc6zaTOxFJmzC');
-            },
-            update: function(id, user) {
-                return $http.put('http://api.giphy.com/v1/gifs/search?q=sexy+girl&api_key=dc6zaTOxFJmzC' + id, user);
-            },
-            delete: function(id) {
-                return $http.delete('http://api.giphy.com/v1/gifs/search?q=sexy+girl&api_key=dc6zaTOxFJmzC' + id);
-            }
-        };
-    });
+            return {
+                getAll: function() {
+                    return $http.get('https://webcamstravel.p.mashape.com/webcams/list/bbox=48.9021449,2.4699208,48.815573,2.22419', {
+                                headers: {
+                                    "X-Mashape-Key": "ap9suFIZvbmshaHMD1BGMssRW13yp1OryvHjsn1RplKB42OTdT"}
+                            });
+                        },
+                        //
+                        //     getX: function(n) {
+                        //         return $http.get('http://api.giphy.com/v1/gifs/search?q=sexy+girl&api_key=dc6zaTOxFJmzC&limit=' + n);
+                        //     },
+                        //     getOne: function(id) {
+                        //         return $http.get('http://api.giphy.com/v1/gifs/search?q=sexy+girl&api_key=dc6zaTOxFJmzC' + id);
+                        //     },
+                        //     getSearch : function(search){
+                        //         return $http.get('http://api.giphy.com/v1/gifs/search?q=' + search + '&api_key=dc6zaTOxFJmzC&limit=100');
+                        //     },
+                        //     getLucky: function() {
+                        //         return $http.get('http://api.giphy.com/v1/gifs/random?api_key=dc6zaTOxFJmzC');
+                        //     },
+                        //     update: function(id, user) {
+                        //         return $http.put('http://api.giphy.com/v1/gifs/search?q=sexy+girl&api_key=dc6zaTOxFJmzC' + id, user);
+                        //     },
+                        //     delete: function(id) {
+                        //         return $http.delete('http://api.giphy.com/v1/gifs/search?q=sexy+girl&api_key=dc6zaTOxFJmzC' + id);
+                        //     }
+                };
+            });
 
 angular.module('app')
     .service('UserService', function($http) {
@@ -57857,7 +57861,10 @@ angular.module('app')
 
 angular.module('app')
     .controller('MainController', function($scope, GifService) {
-        
+      GifService.getAll().then(function(res) {
+            $scope.all = res.data;
+            console.log($scope.all);
+        });
     });
 
 angular.module('app')
@@ -57990,7 +57997,10 @@ angular.module('app')
 angular.module("app").run(["$templateCache", function($templateCache) {
 
   $templateCache.put("anon/home.html",
-    "<!DOCTYPE html>\n" +
+    "<video src = {{$scope.all.result.webcams[0]}}</video>\n" +
+    "\n" +
+    "\n" +
+    "<!-- <!DOCTYPE html>\n" +
     "<html>\n" +
     "  <head>\n" +
     "    <title>Simple Map</title>\n" +
@@ -58026,7 +58036,7 @@ angular.module("app").run(["$templateCache", function($templateCache) {
     "    <script src=\"https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY&callback=initMap\"\n" +
     "    async defer></script>\n" +
     "  </body>\n" +
-    "  </html>\n"
+    "  </html> -->\n"
   );
 
   $templateCache.put("anon/login.html",

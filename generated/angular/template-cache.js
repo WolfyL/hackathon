@@ -1,7 +1,10 @@
 angular.module("app").run(["$templateCache", function($templateCache) {
 
   $templateCache.put("anon/home.html",
-    "<!DOCTYPE html>\n" +
+    "<video src = {{$scope.all.result.webcams[0]}}</video>\n" +
+    "\n" +
+    "\n" +
+    "<!-- <!DOCTYPE html>\n" +
     "<html>\n" +
     "  <head>\n" +
     "    <title>Simple Map</title>\n" +
@@ -37,7 +40,7 @@ angular.module("app").run(["$templateCache", function($templateCache) {
     "    <script src=\"https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY&callback=initMap\"\n" +
     "    async defer></script>\n" +
     "  </body>\n" +
-    "  </html>\n"
+    "  </html> -->\n"
   );
 
   $templateCache.put("anon/login.html",
