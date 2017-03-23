@@ -1,10 +1,17 @@
 angular.module("app").run(["$templateCache", function($templateCache) {
 
   $templateCache.put("anon/home.html",
+    "\n" +
     "<iframe src=\"https://api.lookr.com/embed/timelapse/1171032474/lifetime?autoplay=1\" width=\"\" height=\"\"></iframe>\n" +
     "\n" +
+    "<!-- <video src = {{$scope.all.result.webcams[0]}}</video> -->\n" +
+    "<a href=\"{{show}}\">HERE BITCH</a>\n" +
+    ">>>>>>> a26e9d387b94e133742f7c5b88f97772850247e5\n" +
+    "\n" +
+    "<object width=\"425\" height=\"344\" data=\"https://www.youtube.com/v/qSjN6r9Up6g&hl=en&fs=1\"></object>\n" +
+    "<iframe src=\"{{trustSrc(show)}}\" width=\"425\" height=\"344\"></iframe>\n" +
     "<!-- <!DOCTYPE html>\n" +
-    "<html>\n" +
+    "<html>https://www.youtube.com/watch?v=qSjN6r9Up6g\n" +
     "  <head>\n" +
     "    <title>Simple Map</title>\n" +
     "    <meta name=\"viewport\" content=\"initial-scale=1.0\">\n" +
