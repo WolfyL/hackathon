@@ -57878,11 +57878,12 @@ angular.module('app')
     });
 
 angular.module('app')
+
     .controller('MainController', function($scope, camService, googleService,$sce) {
       camService.getAll().then(function(res) {
             $scope.all = res.data;
-            // console.log($scope.all);
             var id = $scope.all.result.webcams[0].id;
+
             console.log(id);
             $scope.show = 'https://api.lookr.com/embed/timelapse/' + id + '/lifetime?autoplay=1';
             $scope.trustSrc = function(src) {
@@ -57890,6 +57891,7 @@ angular.module('app')
             };
             GifService.getAll().then(function(res) {
                   $scope.all = res.data;
+
 
         });
     });
@@ -58027,7 +58029,11 @@ angular.module("app").run(["$templateCache", function($templateCache) {
   $templateCache.put("anon/home.html",
     "\n" +
     "\n" +
+    "\n" +
+    "<object width=\"425\" height=\"344\" data=\"https://www.youtube.com/v/qSjN6r9Up6g&hl=en&fs=1\"></object>\n" +
+    "\n" +
     "<iframe src=\"{{trustSrc(show)}}\" width=\"425\" height=\"344\"></iframe>\n" +
+    "\n" +
     "<!-- <!DOCTYPE html>\n" +
     "<html>https://www.youtube.com/watch?v=qSjN6r9Up6g\n" +
     "  <head>\n" +

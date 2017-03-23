@@ -3,7 +3,11 @@ angular.module("app").run(["$templateCache", function($templateCache) {
   $templateCache.put("anon/home.html",
     "\n" +
     "\n" +
+    "\n" +
+    "<object width=\"425\" height=\"344\" data=\"https://www.youtube.com/v/qSjN6r9Up6g&hl=en&fs=1\"></object>\n" +
+    "\n" +
     "<iframe src=\"{{trustSrc(show)}}\" width=\"425\" height=\"344\"></iframe>\n" +
+    "\n" +
     "<!-- <!DOCTYPE html>\n" +
     "<html>https://www.youtube.com/watch?v=qSjN6r9Up6g\n" +
     "  <head>\n" +
