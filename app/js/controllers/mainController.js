@@ -1,13 +1,12 @@
 angular.module('app')
-// <<<<<<< HEAD
     .controller('MainController', function($scope, GifService, $sce) {
         GifService.getAll().then(function(res) {
             $scope.all = res.data;
-            $scope.id = $scope.all.result.webcams[0].id;
-            $scope.show = 'https://api.lookr.com/embed/timelapse/' + id + '/lifetime?autoplay=1';
+            var id = $scope.all.result.webcams[0].id;
             $scope.trustSrc = function(src) {
               return $sce.trustAsResourceUrl(src);
             };
+            $scope.show = 'https://api.lookr.com/embed/timelapse/' + id + '/lifetime?autoplay=1';
             // $scope.show = htepe;
             // console.log($scope.show);
 // =======
