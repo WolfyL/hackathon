@@ -1,5 +1,5 @@
 angular.module('app')
-    .service('GifService', function($http) {
+    .service('camService', function($http) {
             return {
                 getAll: function() {
                     return $http.get('https://webcamstravel.p.mashape.com/webcams/list/bbox=48.9021449,2.4699208,48.815573,2.22419', {

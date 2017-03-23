@@ -54,31 +54,14 @@ Navbar CSS
 body CSS
 ================================================================================*/
 
-body {
-    /*background-color: black;*/
-    font-family: 'lemon';
-    font-weight: bold;
+.angular-google-map-container {
+   height: 400px;
+   position: absolute;
 }
-#GifSearch{
-  width: 40px;
-  height: 40px;
-  border-radius: 40px;
-}
-#GifMain{
-  width: 500px;
-  height: 400px;
-}
-#to-copy{
-  font-size: 12px;
-  width: 250px;
-  border-radius: 5px;
-  border: black;
-  background-color: grey ;
-}
-#btnCopy{
-  border-radius: 20px;
-  background-color: grey;
-  color: #F123B3;
+
+.angular-google-map-container {
+   height: 400px;
+   position: absolute;
 }
 
 

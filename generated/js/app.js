@@ -50265,6 +50265,3481 @@ angular.module('ui.router.state')
   .filter('includedByState', $IncludedByStateFilter);
 })(window, window.angular);
 
+(function(root, factory) {
+if (typeof exports === "object") {
+module.exports = factory(require('angular'));
+} else if (typeof define === "function" && define.amd) {
+define(['angular'], factory);
+} else{
+factory(root.angular);
+}
+}(this, function(angular) {
+/**
+ * AngularJS Google Maps Ver. 1.18.3
+ *
+ * The MIT License (MIT)
+ * 
+ * Copyright (c) 2014, 2015, 1016 Allen Kim
+ * 
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of
+ * this software and associated documentation files (the "Software"), to deal in
+ * the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ * the Software, and to permit persons to whom the Software is furnished to do so,
+ * subject to the following conditions:
+ * 
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ * 
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+ * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+ * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+angular.module('ngMap', []);
+
+/**
+ * @ngdoc controller
+ * @name MapController
+ */
+(function() {
+  'use strict';
+  var Attr2MapOptions;
+
+  var __MapController = function(
+      $scope, $element, $attrs, $parse, $interpolate, _Attr2MapOptions_, NgMap, NgMapPool, escapeRegExp
+    ) {
+    Attr2MapOptions = _Attr2MapOptions_;
+    var vm = this;
+    var exprStartSymbol = $interpolate.startSymbol();
+    var exprEndSymbol = $interpolate.endSymbol();
+
+    vm.mapOptions; /** @memberof __MapController */
+    vm.mapEvents;  /** @memberof __MapController */
+    vm.eventListeners;  /** @memberof __MapController */
+
+    /**
+     * Add an object to the collection of group
+     * @memberof __MapController
+     * @function addObject
+     * @param groupName the name of collection that object belongs to
+     * @param obj  an object to add into a collection, i.e. marker, shape
+     */
+    vm.addObject = function(groupName, obj) {
+      if (vm.map) {
+        vm.map[groupName] = vm.map[groupName] || {};
+        var len = Object.keys(vm.map[groupName]).length;
+        vm.map[groupName][obj.id || len] = obj;
+
+        if (vm.map instanceof google.maps.Map) {
+          //infoWindow.setMap works like infoWindow.open
+          if (groupName != "infoWindows" && obj.setMap) {
+            obj.setMap && obj.setMap(vm.map);
+          }
+          if (obj.centered && obj.position) {
+            vm.map.setCenter(obj.position);
+          }
+          (groupName == 'markers') && vm.objectChanged('markers');
+          (groupName == 'customMarkers') && vm.objectChanged('customMarkers');
+        }
+      }
+    };
+
+    /**
+     * Delete an object from the collection and remove from map
+     * @memberof __MapController
+     * @function deleteObject
+     * @param {Array} objs the collection of objects. i.e., map.markers
+     * @param {Object} obj the object to be removed. i.e., marker
+     */
+    vm.deleteObject = function(groupName, obj) {
+      /* delete from group */
+      if (obj.map) {
+        var objs = obj.map[groupName];
+        for (var name in objs) {
+          if (objs[name] === obj) {
+            void 0;
+            google.maps.event.clearInstanceListeners(obj);
+            delete objs[name];
+          }
+        }
+
+        /* delete from map */
+        obj.map && obj.setMap && obj.setMap(null);
+
+        (groupName == 'markers') && vm.objectChanged('markers');
+        (groupName == 'customMarkers') && vm.objectChanged('customMarkers');
+      }
+    };
+
+    /**
+     * @memberof __MapController
+     * @function observeAttrSetObj
+     * @param {Hash} orgAttrs attributes before its initialization
+     * @param {Hash} attrs    attributes after its initialization
+     * @param {Object} obj    map object that an action is to be done
+     * @description watch changes of attribute values and
+     * do appropriate action based on attribute name
+     */
+    vm.observeAttrSetObj = function(orgAttrs, attrs, obj) {
+      if (attrs.noWatcher) {
+        return false;
+      }
+      var attrsToObserve = Attr2MapOptions.getAttrsToObserve(orgAttrs);
+      for (var i=0; i<attrsToObserve.length; i++) {
+        var attrName = attrsToObserve[i];
+        attrs.$observe(attrName, NgMap.observeAndSet(attrName, obj));
+      }
+    };
+
+    /**
+     * @memberof __MapController
+     * @function zoomToIncludeMarkers
+     */
+    vm.zoomToIncludeMarkers = function() {
+      // Only fit to bounds if we have any markers
+      // object.keys is supported in all major browsers (IE9+)
+      if ((vm.map.markers != null && Object.keys(vm.map.markers).length > 0) || (vm.map.customMarkers != null && Object.keys(vm.map.customMarkers).length > 0)) {
+        var bounds = new google.maps.LatLngBounds();
+        for (var k1 in vm.map.markers) {
+          bounds.extend(vm.map.markers[k1].getPosition());
+        }
+        for (var k2 in vm.map.customMarkers) {
+          bounds.extend(vm.map.customMarkers[k2].getPosition());
+        }
+    	  if (vm.mapOptions.maximumZoom) {
+    		  vm.enableMaximumZoomCheck = true; //enable zoom check after resizing for markers
+    	  }
+        vm.map.fitBounds(bounds);
+      }
+    };
+
+    /**
+     * @memberof __MapController
+     * @function objectChanged
+     * @param {String} group name of group e.g., markers
+     */
+    vm.objectChanged = function(group) {
+      if ( vm.map &&
+        (group == 'markers' || group == 'customMarkers') &&
+        vm.map.zoomToIncludeMarkers == 'auto'
+      ) {
+        vm.zoomToIncludeMarkers();
+      }
+    };
+
+    /**
+     * @memberof __MapController
+     * @function initializeMap
+     * @description
+     *  . initialize Google map on <div> tag
+     *  . set map options, events, and observers
+     *  . reset zoom to include all (custom)markers
+     */
+    vm.initializeMap = function() {
+      var mapOptions = vm.mapOptions,
+          mapEvents = vm.mapEvents;
+
+      var lazyInitMap = vm.map; //prepared for lazy init
+      vm.map = NgMapPool.getMapInstance($element[0]);
+      NgMap.setStyle($element[0]);
+
+      // set objects for lazyInit
+      if (lazyInitMap) {
+
+        /**
+         * rebuild mapOptions for lazyInit
+         * because attributes values might have been changed
+         */
+        var filtered = Attr2MapOptions.filter($attrs);
+        var options = Attr2MapOptions.getOptions(filtered);
+        var controlOptions = Attr2MapOptions.getControlOptions(filtered);
+        mapOptions = angular.extend(options, controlOptions);
+        void 0;
+
+        for (var group in lazyInitMap) {
+          var groupMembers = lazyInitMap[group]; //e.g. markers
+          if (typeof groupMembers == 'object') {
+            for (var id in groupMembers) {
+              vm.addObject(group, groupMembers[id]);
+            }
+          }
+        }
+        vm.map.showInfoWindow = vm.showInfoWindow;
+        vm.map.hideInfoWindow = vm.hideInfoWindow;
+      }
+
+      // set options
+      mapOptions.zoom = mapOptions.zoom || 15;
+      var center = mapOptions.center;
+      var exprRegExp = new RegExp(escapeRegExp(exprStartSymbol) + '.*' + escapeRegExp(exprEndSymbol));
+
+      if (!mapOptions.center ||
+        ((typeof center === 'string') && center.match(exprRegExp))
+      ) {
+        mapOptions.center = new google.maps.LatLng(0, 0);
+      } else if( (typeof center === 'string') && center.match(/^[0-9.-]*,[0-9.-]*$/) ){
+        var lat = parseFloat(center.split(',')[0]);
+        var lng = parseFloat(center.split(',')[1]);
+        mapOptions.center = new google.maps.LatLng(lat, lng);
+      } else if (!(center instanceof google.maps.LatLng)) {
+        var geoCenter = mapOptions.center;
+        delete mapOptions.center;
+        NgMap.getGeoLocation(geoCenter, mapOptions.geoLocationOptions).
+          then(function (latlng) {
+            vm.map.setCenter(latlng);
+            var geoCallback = mapOptions.geoCallback;
+            geoCallback && $parse(geoCallback)($scope);
+          }, function () {
+            if (mapOptions.geoFallbackCenter) {
+              vm.map.setCenter(mapOptions.geoFallbackCenter);
+            }
+          });
+      }
+      vm.map.setOptions(mapOptions);
+
+      // set events
+      for (var eventName in mapEvents) {
+        var event = mapEvents[eventName];
+        var listener = google.maps.event.addListener(vm.map, eventName, event);
+        vm.eventListeners[eventName] = listener;
+      }
+
+      // set observers
+      vm.observeAttrSetObj(orgAttrs, $attrs, vm.map);
+      vm.singleInfoWindow = mapOptions.singleInfoWindow;
+
+      google.maps.event.trigger(vm.map, 'resize');
+
+      google.maps.event.addListenerOnce(vm.map, "idle", function () {
+        NgMap.addMap(vm);
+        if (mapOptions.zoomToIncludeMarkers) {
+          vm.zoomToIncludeMarkers();
+        }
+        //TODO: it's for backward compatibiliy. will be removed
+        $scope.map = vm.map;
+        $scope.$emit('mapInitialized', vm.map);
+
+        //callback
+        if ($attrs.mapInitialized) {
+          $parse($attrs.mapInitialized)($scope, {map: vm.map});
+        }
+      });
+
+	  //add maximum zoom listeners if zoom-to-include-markers and and maximum-zoom are valid attributes
+	  if (mapOptions.zoomToIncludeMarkers && mapOptions.maximumZoom) {
+	    google.maps.event.addListener(vm.map, 'zoom_changed', function() {
+          if (vm.enableMaximumZoomCheck == true) {
+			vm.enableMaximumZoomCheck = false;
+	        google.maps.event.addListenerOnce(vm.map, 'bounds_changed', function() {
+		      vm.map.setZoom(Math.min(mapOptions.maximumZoom, vm.map.getZoom()));
+		    });
+	  	  }
+	    });
+	  }
+    };
+
+    $scope.google = google; //used by $scope.eval to avoid eval()
+
+    /**
+     * get map options and events
+     */
+    var orgAttrs = Attr2MapOptions.orgAttributes($element);
+    var filtered = Attr2MapOptions.filter($attrs);
+    var options = Attr2MapOptions.getOptions(filtered, {scope: $scope});
+    var controlOptions = Attr2MapOptions.getControlOptions(filtered);
+    var mapOptions = angular.extend(options, controlOptions);
+    var mapEvents = Attr2MapOptions.getEvents($scope, filtered);
+    void 0;
+    Object.keys(mapEvents).length && void 0;
+
+    vm.mapOptions = mapOptions;
+    vm.mapEvents = mapEvents;
+    vm.eventListeners = {};
+
+    if (options.lazyInit) { // allows controlled initialization
+      // parse angular expression for dynamic ids
+      if (!!$attrs.id &&
+      	  // starts with, at position 0
+	  $attrs.id.indexOf(exprStartSymbol, 0) === 0 &&
+	  // ends with
+	  $attrs.id.indexOf(exprEndSymbol, $attrs.id.length - exprEndSymbol.length) !== -1) {
+        var idExpression = $attrs.id.slice(2,-2);
+        var mapId = $parse(idExpression)($scope);
+      } else {
+        var mapId = $attrs.id;
+      }
+      vm.map = {id: mapId}; //set empty, not real, map
+      NgMap.addMap(vm);
+    } else {
+      vm.initializeMap();
+    }
+
+    //Trigger Resize
+    if(options.triggerResize) {
+      google.maps.event.trigger(vm.map, 'resize');
+    }
+
+    $element.bind('$destroy', function() {
+      NgMapPool.returnMapInstance(vm.map);
+      NgMap.deleteMap(vm);
+    });
+  }; // __MapController
+
+  __MapController.$inject = [
+    '$scope', '$element', '$attrs', '$parse', '$interpolate', 'Attr2MapOptions', 'NgMap', 'NgMapPool', 'escapeRegexpFilter'
+  ];
+  angular.module('ngMap').controller('__MapController', __MapController);
+})();
+
+/**
+ * @ngdoc directive
+ * @name bicycling-layer
+ * @param Attr2Options {service}
+ *   convert html attribute to Google map api options
+ * @description
+ *   Requires:  map directive
+ *   Restrict To:  Element
+ *
+ * @example
+ *
+ *   <map zoom="13" center="34.04924594193164, -118.24104309082031">
+ *     <bicycling-layer></bicycling-layer>
+ *    </map>
+ */
+(function() {
+  'use strict';
+  var parser;
+
+  var linkFunc = function(scope, element, attrs, mapController) {
+    mapController = mapController[0]||mapController[1];
+    var orgAttrs = parser.orgAttributes(element);
+    var filtered = parser.filter(attrs);
+    var options = parser.getOptions(filtered, {scope: scope});
+    var events = parser.getEvents(scope, filtered);
+
+    void 0;
+
+    var layer = getLayer(options, events);
+    mapController.addObject('bicyclingLayers', layer);
+    mapController.observeAttrSetObj(orgAttrs, attrs, layer);  //observers
+    element.bind('$destroy', function() {
+      mapController.deleteObject('bicyclingLayers', layer);
+    });
+  };
+
+  var getLayer = function(options, events) {
+    var layer = new google.maps.BicyclingLayer(options);
+    for (var eventName in events) {
+      google.maps.event.addListener(layer, eventName, events[eventName]);
+    }
+    return layer;
+  };
+
+  var bicyclingLayer= function(Attr2MapOptions) {
+    parser = Attr2MapOptions;
+    return {
+      restrict: 'E',
+      require: ['?^map','?^ngMap'],
+      link: linkFunc
+     };
+  };
+  bicyclingLayer.$inject = ['Attr2MapOptions'];
+
+  angular.module('ngMap').directive('bicyclingLayer', bicyclingLayer);
+})();
+
+/**
+ * @ngdoc directive
+ * @name custom-control
+ * @param Attr2Options {service} convert html attribute to Google map api options
+ * @param $compile {service} AngularJS $compile service
+ * @description
+ *   Build custom control and set to the map with position
+ *
+ *   Requires:  map directive
+ *
+ *   Restrict To:  Element
+ *
+ * @attr {String} position position of this control
+ *        i.e. TOP_RIGHT
+ * @attr {Number} index index of the control
+ * @example
+ *
+ * Example:
+ *  <map center="41.850033,-87.6500523" zoom="3">
+ *    <custom-control id="home" position="TOP_LEFT" index="1">
+ *      <div style="background-color: white;">
+ *        <b>Home</b>
+ *      </div>
+ *    </custom-control>
+ *  </map>
+ *
+ */
+(function() {
+  'use strict';
+  var parser, NgMap;
+
+  var linkFunc = function(scope, element, attrs, mapController, $transclude) {
+    mapController = mapController[0]||mapController[1];
+    var filtered = parser.filter(attrs);
+    var options = parser.getOptions(filtered, {scope: scope});
+    var events = parser.getEvents(scope, filtered);
+
+    /**
+     * build a custom control element
+     */
+    var customControlEl = element[0].parentElement.removeChild(element[0]);
+    var content = $transclude();
+    angular.element(customControlEl).append(content);
+
+    /**
+     * set events
+     */
+    for (var eventName in events) {
+      google.maps.event.addDomListener(customControlEl, eventName, events[eventName]);
+    }
+
+    mapController.addObject('customControls', customControlEl);
+    var position = options.position;
+    mapController.map.controls[google.maps.ControlPosition[position]].push(customControlEl);
+
+    element.bind('$destroy', function() {
+      mapController.deleteObject('customControls', customControlEl);
+    });
+  };
+
+  var customControl =  function(Attr2MapOptions, _NgMap_)  {
+    parser = Attr2MapOptions, NgMap = _NgMap_;
+
+    return {
+      restrict: 'E',
+      require: ['?^map','?^ngMap'],
+      link: linkFunc,
+      transclude: true
+    }; // return
+  };
+  customControl.$inject = ['Attr2MapOptions', 'NgMap'];
+
+  angular.module('ngMap').directive('customControl', customControl);
+})();
+
+/**
+ * @ngdoc directive
+ * @memberof ngmap
+ * @name custom-marker
+ * @param Attr2Options {service} convert html attribute to Google map api options
+ * @param $timeout {service} AngularJS $timeout
+ * @description
+ *   Marker with html
+ *   Requires:  map directive
+ *   Restrict To:  Element
+ *
+ * @attr {String} position required, position on map
+ * @attr {Number} z-index optional
+ * @attr {Boolean} visible optional
+ * @example
+ *
+ * Example:
+ *   <map center="41.850033,-87.6500523" zoom="3">
+ *     <custom-marker position="41.850033,-87.6500523">
+ *       <div>
+ *         <b>Home</b>
+ *       </div>
+ *     </custom-marker>
+ *   </map>
+ *
+ */
+/* global document */
+(function() {
+  'use strict';
+  var parser, $timeout, $compile, NgMap;
+
+  var CustomMarker = function(options) {
+    options = options || {};
+
+    this.el = document.createElement('div');
+    this.el.style.display = 'inline-block';
+    this.el.style.visibility = "hidden";
+    this.visible = true;
+    for (var key in options) { /* jshint ignore:line */
+     this[key] = options[key];
+    }
+  };
+
+  var setCustomMarker = function() {
+
+    CustomMarker.prototype = new google.maps.OverlayView();
+
+    CustomMarker.prototype.setContent = function(html, scope) {
+      this.el.innerHTML = html;
+      this.el.style.position = 'absolute';
+      if (scope) {
+        $compile(angular.element(this.el).contents())(scope);
+      }
+    };
+
+    CustomMarker.prototype.getDraggable = function() {
+      return this.draggable;
+    };
+
+    CustomMarker.prototype.setDraggable = function(draggable) {
+      this.draggable = draggable;
+    };
+
+    CustomMarker.prototype.getPosition = function() {
+      return this.position;
+    };
+
+    CustomMarker.prototype.setPosition = function(position) {
+      position && (this.position = position); /* jshint ignore:line */
+      var _this = this;
+      if (this.getProjection() && typeof this.position.lng == 'function') {
+        void 0;
+        var setPosition = function() {
+          if (!_this.getProjection()) { return; }
+          var posPixel = _this.getProjection().fromLatLngToDivPixel(_this.position);
+          var x = Math.round(posPixel.x - (_this.el.offsetWidth/2));
+          var y = Math.round(posPixel.y - _this.el.offsetHeight - 10); // 10px for anchor
+          _this.el.style.left = x + "px";
+          _this.el.style.top = y + "px";
+          _this.el.style.visibility = "visible";
+        };
+        if (_this.el.offsetWidth && _this.el.offsetHeight) {
+          setPosition();
+        } else {
+          //delayed left/top calculation when width/height are not set instantly
+          $timeout(setPosition, 300);
+        }
+      }
+    };
+
+    CustomMarker.prototype.setZIndex = function(zIndex) {
+      zIndex && (this.zIndex = zIndex); /* jshint ignore:line */
+      this.el.style.zIndex = this.zIndex;
+    };
+
+    CustomMarker.prototype.getVisible = function() {
+      return this.visible;
+    };
+
+    CustomMarker.prototype.setVisible = function(visible) {
+      this.el.style.display = visible ? 'inline-block' : 'none';
+      this.visible = visible;
+    };
+
+    CustomMarker.prototype.addClass = function(className) {
+      var classNames = this.el.className.trim().split(' ');
+      (classNames.indexOf(className) == -1) && classNames.push(className); /* jshint ignore:line */
+      this.el.className = classNames.join(' ');
+    };
+
+    CustomMarker.prototype.removeClass = function(className) {
+      var classNames = this.el.className.split(' ');
+      var index = classNames.indexOf(className);
+      (index > -1) && classNames.splice(index, 1); /* jshint ignore:line */
+      this.el.className = classNames.join(' ');
+    };
+
+    CustomMarker.prototype.onAdd = function() {
+      this.getPanes().overlayMouseTarget.appendChild(this.el);
+    };
+
+    CustomMarker.prototype.draw = function() {
+      this.setPosition();
+      this.setZIndex(this.zIndex);
+      this.setVisible(this.visible);
+    };
+
+    CustomMarker.prototype.onRemove = function() {
+      this.el.parentNode.removeChild(this.el);
+      //this.el = null;
+    };
+  };
+
+  var linkFunc = function(orgHtml, varsToWatch) {
+    //console.log('orgHtml', orgHtml, 'varsToWatch', varsToWatch);
+
+    return function(scope, element, attrs, mapController) {
+      mapController = mapController[0]||mapController[1];
+      var orgAttrs = parser.orgAttributes(element);
+
+      var filtered = parser.filter(attrs);
+      var options = parser.getOptions(filtered, {scope: scope});
+      var events = parser.getEvents(scope, filtered);
+
+      /**
+       * build a custom marker element
+       */
+      element[0].style.display = 'none';
+      void 0;
+      var customMarker = new CustomMarker(options);
+
+      $timeout(function() { //apply contents, class, and location after it is compiled
+
+        scope.$watch('[' + varsToWatch.join(',') + ']', function() {
+          customMarker.setContent(orgHtml, scope);
+        }, true);
+
+        customMarker.setContent(element[0].innerHTML, scope);
+        var classNames = element[0].firstElementChild.className;
+        customMarker.addClass('custom-marker');
+        customMarker.addClass(classNames);
+        void 0;
+
+        if (!(options.position instanceof google.maps.LatLng)) {
+          NgMap.getGeoLocation(options.position).then(
+                function(latlng) {
+                  customMarker.setPosition(latlng);
+                }
+          );
+        }
+
+      });
+
+      void 0;
+      for (var eventName in events) { /* jshint ignore:line */
+        google.maps.event.addDomListener(
+          customMarker.el, eventName, events[eventName]);
+      }
+      mapController.addObject('customMarkers', customMarker);
+
+      //set observers
+      mapController.observeAttrSetObj(orgAttrs, attrs, customMarker);
+
+      element.bind('$destroy', function() {
+        //Is it required to remove event listeners when DOM is removed?
+        mapController.deleteObject('customMarkers', customMarker);
+      });
+
+    }; // linkFunc
+  };
+
+
+  var customMarkerDirective = function(
+      _$timeout_, _$compile_, $interpolate, Attr2MapOptions, _NgMap_, escapeRegExp
+    )  {
+    parser = Attr2MapOptions;
+    $timeout = _$timeout_;
+    $compile = _$compile_;
+    NgMap = _NgMap_;
+
+    var exprStartSymbol = $interpolate.startSymbol();
+    var exprEndSymbol = $interpolate.endSymbol();
+    var exprRegExp = new RegExp(escapeRegExp(exprStartSymbol) + '([^' + exprEndSymbol.substring(0, 1) + ']+)' + escapeRegExp(exprEndSymbol), 'g');
+
+    return {
+      restrict: 'E',
+      require: ['?^map','?^ngMap'],
+      compile: function(element) {
+        setCustomMarker();
+        element[0].style.display ='none';
+        var orgHtml = element.html();
+        var matches = orgHtml.match(exprRegExp);
+        var varsToWatch = [];
+        //filter out that contains '::', 'this.'
+        (matches || []).forEach(function(match) {
+          var toWatch = match.replace(exprStartSymbol,'').replace(exprEndSymbol,'');
+          if (match.indexOf('::') == -1 &&
+            match.indexOf('this.') == -1 &&
+            varsToWatch.indexOf(toWatch) == -1) {
+            varsToWatch.push(match.replace(exprStartSymbol,'').replace(exprEndSymbol,''));
+          }
+        });
+
+        return linkFunc(orgHtml, varsToWatch);
+      }
+    }; // return
+  };// function
+  customMarkerDirective.$inject =
+    ['$timeout', '$compile', '$interpolate', 'Attr2MapOptions', 'NgMap', 'escapeRegexpFilter'];
+
+  angular.module('ngMap').directive('customMarker', customMarkerDirective);
+})();
+
+/**
+ * @ngdoc directive
+ * @name directions
+ * @description
+ *   Enable directions on map.
+ *   e.g., origin, destination, draggable, waypoints, etc
+ *
+ *   Requires:  map directive
+ *
+ *   Restrict To:  Element
+ *
+ * @attr {String} DirectionsRendererOptions
+ *   [Any DirectionsRendererOptions](https://developers.google.com/maps/documentation/javascript/reference#DirectionsRendererOptions)
+ * @attr {String} DirectionsRequestOptions
+ *   [Any DirectionsRequest options](https://developers.google.com/maps/documentation/javascript/reference#DirectionsRequest)
+ * @example
+ *  <map zoom="14" center="37.7699298, -122.4469157">
+ *    <directions
+ *      draggable="true"
+ *      panel="directions-panel"
+ *      travel-mode="{{travelMode}}"
+ *      waypoints="[{location:'kingston', stopover:true}]"
+ *      origin="{{origin}}"
+ *      destination="{{destination}}">
+ *    </directions>
+ *  </map>
+ */
+/* global document */
+(function() {
+  'use strict';
+  var NgMap, $timeout, NavigatorGeolocation;
+
+  var getDirectionsRenderer = function(options, events) {
+    if (options.panel) {
+      options.panel = document.getElementById(options.panel) ||
+        document.querySelector(options.panel);
+    }
+    var renderer = new google.maps.DirectionsRenderer(options);
+    for (var eventName in events) {
+      google.maps.event.addListener(renderer, eventName, events[eventName]);
+    }
+    return renderer;
+  };
+
+  var updateRoute = function(renderer, options) {
+    var directionsService = new google.maps.DirectionsService();
+
+    /* filter out valid keys only for DirectionsRequest object*/
+    var request = options;
+    request.travelMode = request.travelMode || 'DRIVING';
+    var validKeys = [
+      'origin', 'destination', 'travelMode', 'transitOptions', 'unitSystem',
+      'durationInTraffic', 'waypoints', 'optimizeWaypoints', 
+      'provideRouteAlternatives', 'avoidHighways', 'avoidTolls', 'region'
+    ];
+    for(var key in request){
+      (validKeys.indexOf(key) === -1) && (delete request[key]);
+    }
+
+    if(request.waypoints) {
+      // Check fo valid values
+      if(request.waypoints == "[]" || request.waypoints === "") {
+        delete request.waypoints;
+      }
+    }
+
+    var showDirections = function(request) {
+      directionsService.route(request, function(response, status) {
+        if (status == google.maps.DirectionsStatus.OK) {
+          $timeout(function() {
+            renderer.setDirections(response);
+          });
+        }
+      });
+    };
+
+    if (request.origin && request.destination) {
+      if (request.origin == 'current-location') {
+        NavigatorGeolocation.getCurrentPosition().then(function(ll) {
+          request.origin = new google.maps.LatLng(ll.coords.latitude, ll.coords.longitude);
+          showDirections(request);
+        });
+      } else if (request.destination == 'current-location') {
+        NavigatorGeolocation.getCurrentPosition().then(function(ll) {
+          request.destination = new google.maps.LatLng(ll.coords.latitude, ll.coords.longitude);
+          showDirections(request);
+        });
+      } else {
+        showDirections(request);
+      }
+    }
+  };
+
+  var directions = function(
+      Attr2MapOptions, _$timeout_, _NavigatorGeolocation_, _NgMap_) {
+    var parser = Attr2MapOptions;
+    NgMap = _NgMap_;
+    $timeout = _$timeout_;
+    NavigatorGeolocation = _NavigatorGeolocation_;
+
+    var linkFunc = function(scope, element, attrs, mapController) {
+      mapController = mapController[0]||mapController[1];
+
+      var orgAttrs = parser.orgAttributes(element);
+      var filtered = parser.filter(attrs);
+      var options = parser.getOptions(filtered, {scope: scope});
+      var events = parser.getEvents(scope, filtered);
+      var attrsToObserve = parser.getAttrsToObserve(orgAttrs);
+
+      var renderer = getDirectionsRenderer(options, events);
+      mapController.addObject('directionsRenderers', renderer);
+
+      attrsToObserve.forEach(function(attrName) {
+        (function(attrName) {
+          attrs.$observe(attrName, function(val) {
+            if (attrName == 'panel') {
+              $timeout(function(){
+                var panel =
+                  document.getElementById(val) || document.querySelector(val);
+                void 0;
+                panel && renderer.setPanel(panel);
+              });
+            } else if (options[attrName] !== val) { //apply only if changed
+              var optionValue = parser.toOptionValue(val, {key: attrName});
+              void 0;
+              options[attrName] = optionValue;
+              updateRoute(renderer, options);
+            }
+          });
+        })(attrName);
+      });
+
+      NgMap.getMap().then(function() {
+        updateRoute(renderer, options);
+      });
+      element.bind('$destroy', function() {
+        mapController.deleteObject('directionsRenderers', renderer);
+      });
+    };
+
+    return {
+      restrict: 'E',
+      require: ['?^map','?^ngMap'],
+      link: linkFunc
+    };
+  }; // var directions
+  directions.$inject =
+    ['Attr2MapOptions', '$timeout', 'NavigatorGeolocation', 'NgMap'];
+
+  angular.module('ngMap').directive('directions', directions);
+})();
+
+
+/**
+ * @ngdoc directive
+ * @name drawing-manager
+ * @param Attr2Options {service} convert html attribute to Google map api options
+ * @description
+ *   Requires:  map directive
+ *   Restrict To:  Element
+ *
+ * @example
+ * Example:
+ *
+ *  <map zoom="13" center="37.774546, -122.433523" map-type-id="SATELLITE">
+ *    <drawing-manager
+ *      on-overlaycomplete="onMapOverlayCompleted()"
+ *      position="ControlPosition.TOP_CENTER"
+ *      drawingModes="POLYGON,CIRCLE"
+ *      drawingControl="true"
+ *      circleOptions="fillColor: '#FFFF00';fillOpacity: 1;strokeWeight: 5;clickable: false;zIndex: 1;editable: true;" >
+ *    </drawing-manager>
+ *  </map>
+ *
+ *  TODO: Add remove button.
+ *  currently, for our solution, we have the shapes/markers in our own
+ *  controller, and we use some css classes to change the shape button
+ *  to a remove button (<div>X</div>) and have the remove operation in our own controller.
+ */
+(function() {
+  'use strict';
+  angular.module('ngMap').directive('drawingManager', [
+    'Attr2MapOptions', function(Attr2MapOptions) {
+    var parser = Attr2MapOptions;
+
+    return {
+      restrict: 'E',
+      require: ['?^map','?^ngMap'],
+
+      link: function(scope, element, attrs, mapController) {
+        mapController = mapController[0]||mapController[1];
+
+        var filtered = parser.filter(attrs);
+        var options = parser.getOptions(filtered, {scope: scope});
+        var controlOptions = parser.getControlOptions(filtered);
+        var events = parser.getEvents(scope, filtered);
+
+        /**
+         * set options
+         */
+        var drawingManager = new google.maps.drawing.DrawingManager({
+          drawingMode: options.drawingmode,
+          drawingControl: options.drawingcontrol,
+          drawingControlOptions: controlOptions.drawingControlOptions,
+          circleOptions:options.circleoptions,
+          markerOptions:options.markeroptions,
+          polygonOptions:options.polygonoptions,
+          polylineOptions:options.polylineoptions,
+          rectangleOptions:options.rectangleoptions
+        });
+
+        //Observers
+        attrs.$observe('drawingControlOptions', function (newValue) {
+          drawingManager.drawingControlOptions = parser.getControlOptions({drawingControlOptions: newValue}).drawingControlOptions;
+          drawingManager.setDrawingMode(null);
+          drawingManager.setMap(mapController.map);
+        });
+
+
+        /**
+         * set events
+         */
+        for (var eventName in events) {
+          google.maps.event.addListener(drawingManager, eventName, events[eventName]);
+        }
+
+        mapController.addObject('mapDrawingManager', drawingManager);
+
+        element.bind('$destroy', function() {
+          mapController.deleteObject('mapDrawingManager', drawingManager);
+        });
+      }
+    }; // return
+  }]);
+})();
+
+/**
+ * @ngdoc directive
+ * @name dynamic-maps-engine-layer
+ * @description
+ *   Requires:  map directive
+ *   Restrict To:  Element
+ *
+ * @example
+ * Example:
+ *   <map zoom="14" center="[59.322506, 18.010025]">
+ *     <dynamic-maps-engine-layer
+ *       layer-id="06673056454046135537-08896501997766553811">
+ *     </dynamic-maps-engine-layer>
+ *    </map>
+ */
+(function() {
+  'use strict';
+
+  angular.module('ngMap').directive('dynamicMapsEngineLayer', [
+    'Attr2MapOptions', function(Attr2MapOptions) {
+    var parser = Attr2MapOptions;
+
+    var getDynamicMapsEngineLayer = function(options, events) {
+      var layer = new google.maps.visualization.DynamicMapsEngineLayer(options);
+
+      for (var eventName in events) {
+        google.maps.event.addListener(layer, eventName, events[eventName]);
+      }
+
+      return layer;
+    };
+
+    return {
+      restrict: 'E',
+      require: ['?^map','?^ngMap'],
+
+      link: function(scope, element, attrs, mapController) {
+        mapController = mapController[0]||mapController[1];
+
+        var filtered = parser.filter(attrs);
+        var options = parser.getOptions(filtered, {scope: scope});
+        var events = parser.getEvents(scope, filtered, events);
+
+        var layer = getDynamicMapsEngineLayer(options, events);
+        mapController.addObject('mapsEngineLayers', layer);
+      }
+     }; // return
+  }]);
+})();
+
+/**
+ * @ngdoc directive
+ * @name fusion-tables-layer
+ * @description
+ *   Requires:  map directive
+ *   Restrict To:  Element
+ *
+ * @example
+ * Example:
+ *   <map zoom="11" center="41.850033, -87.6500523">
+ *     <fusion-tables-layer query="{
+ *       select: 'Geocodable address',
+ *       from: '1mZ53Z70NsChnBMm-qEYmSDOvLXgrreLTkQUvvg'}">
+ *     </fusion-tables-layer>
+ *   </map>
+ */
+(function() {
+  'use strict';
+
+  angular.module('ngMap').directive('fusionTablesLayer', [
+    'Attr2MapOptions', function(Attr2MapOptions) {
+    var parser = Attr2MapOptions;
+
+    var getLayer = function(options, events) {
+      var layer = new google.maps.FusionTablesLayer(options);
+
+      for (var eventName in events) {
+        google.maps.event.addListener(layer, eventName, events[eventName]);
+      }
+
+      return layer;
+    };
+
+    return {
+      restrict: 'E',
+      require: ['?^map','?^ngMap'],
+
+      link: function(scope, element, attrs, mapController) {
+        mapController = mapController[0]||mapController[1];
+
+        var filtered = parser.filter(attrs);
+        var options = parser.getOptions(filtered, {scope: scope});
+        var events = parser.getEvents(scope, filtered, events);
+        void 0;
+
+        var layer = getLayer(options, events);
+        mapController.addObject('fusionTablesLayers', layer);
+        element.bind('$destroy', function() {
+          mapController.deleteObject('fusionTablesLayers', layer);
+        });
+      }
+     }; // return
+  }]);
+})();
+
+/**
+ * @ngdoc directive
+ * @name heatmap-layer
+ * @param Attr2Options {service} convert html attribute to Google map api options
+ * @description
+ *   Requires:  map directive
+ *   Restrict To:  Element
+ *
+ * @example
+ *
+ * <map zoom="11" center="[41.875696,-87.624207]">
+ *   <heatmap-layer data="taxiData"></heatmap-layer>
+ * </map>
+ */
+(function() {
+  'use strict';
+
+  angular.module('ngMap').directive('heatmapLayer', [
+    'Attr2MapOptions', '$window', function(Attr2MapOptions, $window) {
+    var parser = Attr2MapOptions;
+    return {
+      restrict: 'E',
+      require: ['?^map','?^ngMap'],
+
+      link: function(scope, element, attrs, mapController) {
+        mapController = mapController[0]||mapController[1];
+
+        var filtered = parser.filter(attrs);
+
+        /**
+         * set options
+         */
+        var options = parser.getOptions(filtered, {scope: scope});
+        options.data = $window[attrs.data] || scope[attrs.data];
+        if (options.data instanceof Array) {
+          options.data = new google.maps.MVCArray(options.data);
+        } else {
+          throw "invalid heatmap data";
+        }
+        var layer = new google.maps.visualization.HeatmapLayer(options);
+
+        /**
+         * set events
+         */
+        var events = parser.getEvents(scope, filtered);
+        void 0;
+
+        mapController.addObject('heatmapLayers', layer);
+      }
+     }; // return
+  }]);
+})();
+
+/**
+ * @ngdoc directive
+ * @name info-window
+ * @param Attr2MapOptions {service}
+ *   convert html attribute to Google map api options
+ * @param $compile {service} $compile service
+ * @description
+ *  Defines infoWindow and provides compile method
+ *
+ *  Requires:  map directive
+ *
+ *  Restrict To:  Element
+ *
+ *  NOTE: this directive should **NOT** be used with `ng-repeat`
+ *  because InfoWindow itself is a template, and a template must be
+ *  reused by each marker, thus, should not be redefined repeatedly
+ *  by `ng-repeat`.
+ *
+ * @attr {Boolean} visible
+ *   Indicates to show it when map is initialized
+ * @attr {Boolean} visible-on-marker
+ *   Indicates to show it on a marker when map is initialized
+ * @attr {Expression} geo-callback
+ *   if position is an address, the expression is will be performed
+ *   when geo-lookup is successful. e.g., geo-callback="showDetail()"
+ * @attr {String} &lt;InfoWindowOption> Any InfoWindow options,
+ *   https://developers.google.com/maps/documentation/javascript/reference?csw=1#InfoWindowOptions
+ * @attr {String} &lt;InfoWindowEvent> Any InfoWindow events,
+ *   https://developers.google.com/maps/documentation/javascript/reference
+ * @example
+ * Usage:
+ *   <map MAP_ATTRIBUTES>
+ *    <info-window id="foo" ANY_OPTIONS ANY_EVENTS"></info-window>
+ *   </map>
+ *
+ * Example:
+ *  <map center="41.850033,-87.6500523" zoom="3">
+ *    <info-window id="1" position="41.850033,-87.6500523" >
+ *      <div ng-non-bindable>
+ *        Chicago, IL<br/>
+ *        LatLng: {{chicago.lat()}}, {{chicago.lng()}}, <br/>
+ *        World Coordinate: {{worldCoordinate.x}}, {{worldCoordinate.y}}, <br/>
+ *        Pixel Coordinate: {{pixelCoordinate.x}}, {{pixelCoordinate.y}}, <br/>
+ *        Tile Coordinate: {{tileCoordinate.x}}, {{tileCoordinate.y}} at Zoom Level {{map.getZoom()}}
+ *      </div>
+ *    </info-window>
+ *  </map>
+ */
+/* global google */
+(function() {
+  'use strict';
+
+  var infoWindow = function(Attr2MapOptions, $compile, $q, $templateRequest, $timeout, $parse, NgMap)  {
+    var parser = Attr2MapOptions;
+
+    var getInfoWindow = function(options, events, element) {
+      var infoWindow;
+
+      /**
+       * set options
+       */
+      if (options.position && !(options.position instanceof google.maps.LatLng)) {
+        delete options.position;
+      }
+      infoWindow = new google.maps.InfoWindow(options);
+
+      /**
+       * set events
+       */
+      for (var eventName in events) {
+        if (eventName) {
+          google.maps.event.addListener(infoWindow, eventName, events[eventName]);
+        }
+      }
+
+      /**
+       * set template and template-related functions
+       * it must have a container element with ng-non-bindable
+       */
+      var templatePromise = $q(function(resolve) {
+        if (angular.isString(element)) {
+          $templateRequest(element).then(function (requestedTemplate) {
+            resolve(angular.element(requestedTemplate).wrap('<div>').parent());
+          }, function(message) {
+            throw "info-window template request failed: " + message;
+          });
+        }
+        else {
+          resolve(element);
+        }
+      }).then(function(resolvedTemplate) {
+        var template = resolvedTemplate.html().trim();
+        if (angular.element(template).length != 1) {
+          throw "info-window working as a template must have a container";
+        }
+        infoWindow.__template = template.replace(/\s?ng-non-bindable[='"]+/,"");
+      });
+
+      infoWindow.__open = function(map, scope, anchor) {
+        templatePromise.then(function() {
+          $timeout(function() {
+            anchor && (scope.anchor = anchor);
+            var el = $compile(infoWindow.__template)(scope);
+            infoWindow.setContent(el[0]);
+            scope.$apply();
+            if (anchor && anchor.getPosition) {
+              infoWindow.open(map, anchor);
+            } else if (anchor && anchor instanceof google.maps.LatLng) {
+              infoWindow.open(map);
+              infoWindow.setPosition(anchor);
+            } else {
+              infoWindow.open(map);
+            }
+            var infoWindowContainerEl = infoWindow.content.parentElement.parentElement.parentElement;
+            infoWindowContainerEl.className = "ng-map-info-window";
+          });
+        });
+      };
+
+      return infoWindow;
+    };
+
+    var linkFunc = function(scope, element, attrs, mapController) {
+      mapController = mapController[0]||mapController[1];
+
+      element.css('display','none');
+
+      var orgAttrs = parser.orgAttributes(element);
+      var filtered = parser.filter(attrs);
+      var options = parser.getOptions(filtered, {scope: scope});
+      var events = parser.getEvents(scope, filtered);
+
+      var infoWindow = getInfoWindow(options, events, options.template || element);
+      var address;
+      if (options.position && !(options.position instanceof google.maps.LatLng)) {
+        address = options.position;
+      }
+      if (address) {
+        NgMap.getGeoLocation(address).then(function(latlng) {
+          infoWindow.setPosition(latlng);
+          infoWindow.__open(mapController.map, scope, latlng);
+          var geoCallback = attrs.geoCallback;
+          geoCallback && $parse(geoCallback)(scope);
+        });
+      }
+
+      mapController.addObject('infoWindows', infoWindow);
+      mapController.observeAttrSetObj(orgAttrs, attrs, infoWindow);
+
+      mapController.showInfoWindow =
+      mapController.map.showInfoWindow = mapController.showInfoWindow ||
+        function(p1, p2, p3) { //event, id, marker
+          var id = typeof p1 == 'string' ? p1 : p2;
+          var marker = typeof p1 == 'string' ? p2 : p3;
+          if (typeof marker == 'string') {
+            //Check if markers if defined to avoid odd 'undefined' errors
+            if (
+              typeof mapController.map.markers != "undefined"
+              && typeof mapController.map.markers[marker] != "undefined") {
+                marker = mapController.map.markers[marker];
+            } else if (
+              //additionally check if that marker is a custom marker
+              typeof mapController.map.customMarkers !== "undefined"
+              && typeof mapController.map.customMarkers[marker] !== "undefined") {
+                marker = mapController.map.customMarkers[marker];
+            } else {
+              //Better error output if marker with that id is not defined
+              throw new Error("Cant open info window for id " + marker + ". Marker or CustomMarker is not defined")
+            }
+          }
+
+          var infoWindow = mapController.map.infoWindows[id];
+          var anchor = marker ? marker : (this.getPosition ? this : null);
+          infoWindow.__open(mapController.map, scope, anchor);
+          if(mapController.singleInfoWindow) {
+            if(mapController.lastInfoWindow) {
+              scope.hideInfoWindow(mapController.lastInfoWindow);
+            }
+            mapController.lastInfoWindow = id;
+          }
+        };
+
+      mapController.hideInfoWindow =
+      mapController.map.hideInfoWindow = mapController.hideInfoWindow ||
+        function(p1, p2) {
+          var id = typeof p1 == 'string' ? p1 : p2;
+          var infoWindow = mapController.map.infoWindows[id];
+          infoWindow.close();
+        };
+
+      //TODO DEPRECATED
+      scope.showInfoWindow = mapController.map.showInfoWindow;
+      scope.hideInfoWindow = mapController.map.hideInfoWindow;
+
+      var map = infoWindow.mapId ? {id:infoWindow.mapId} : 0;
+      NgMap.getMap(map).then(function(map) {
+        infoWindow.visible && infoWindow.__open(map, scope);
+        if (infoWindow.visibleOnMarker) {
+          var markerId = infoWindow.visibleOnMarker;
+          infoWindow.__open(map, scope, map.markers[markerId]);
+        }
+      });
+
+    }; //link
+
+    return {
+      restrict: 'E',
+      require: ['?^map','?^ngMap'],
+      link: linkFunc
+    };
+
+  }; // infoWindow
+  infoWindow.$inject =
+    ['Attr2MapOptions', '$compile', '$q', '$templateRequest', '$timeout', '$parse', 'NgMap'];
+
+  angular.module('ngMap').directive('infoWindow', infoWindow);
+})();
+
+/**
+ * @ngdoc directive
+ * @name kml-layer
+ * @param Attr2MapOptions {service} convert html attribute to Google map api options
+ * @description
+ *   renders Kml layer on a map
+ *   Requires:  map directive
+ *   Restrict To:  Element
+ *
+ * @attr {Url} url url of the kml layer
+ * @attr {KmlLayerOptions} KmlLayerOptions
+ *   (https://developers.google.com/maps/documentation/javascript/reference#KmlLayerOptions) 
+ * @attr {String} &lt;KmlLayerEvent> Any KmlLayer events,
+ *   https://developers.google.com/maps/documentation/javascript/reference
+ * @example
+ * Usage:
+ *   <map MAP_ATTRIBUTES>
+ *    <kml-layer ANY_KML_LAYER ANY_KML_LAYER_EVENTS"></kml-layer>
+ *   </map>
+ *
+ * Example:
+ *
+ * <map zoom="11" center="[41.875696,-87.624207]">
+ *   <kml-layer url="https://gmaps-samples.googlecode.com/svn/trunk/ggeoxml/cta.kml" >
+ *   </kml-layer>
+ * </map>
+ */
+(function() {
+  'use strict';
+
+  angular.module('ngMap').directive('kmlLayer', [
+    'Attr2MapOptions', function(Attr2MapOptions) {
+    var parser = Attr2MapOptions;
+
+    var getKmlLayer = function(options, events) {
+      var kmlLayer = new google.maps.KmlLayer(options);
+      for (var eventName in events) {
+        google.maps.event.addListener(kmlLayer, eventName, events[eventName]);
+      }
+      return kmlLayer;
+    };
+
+    return {
+      restrict: 'E',
+      require: ['?^map','?^ngMap'],
+
+      link: function(scope, element, attrs, mapController) {
+        mapController = mapController[0]||mapController[1];
+
+        var orgAttrs = parser.orgAttributes(element);
+        var filtered = parser.filter(attrs);
+        var options = parser.getOptions(filtered, {scope: scope});
+        var events = parser.getEvents(scope, filtered);
+        void 0;
+
+        var kmlLayer = getKmlLayer(options, events);
+        mapController.addObject('kmlLayers', kmlLayer);
+        mapController.observeAttrSetObj(orgAttrs, attrs, kmlLayer);  //observers
+        element.bind('$destroy', function() {
+          mapController.deleteObject('kmlLayers', kmlLayer);
+        });
+      }
+     }; // return
+  }]);
+})();
+
+/**
+ * @ngdoc directive
+ * @name map-data
+ * @param Attr2MapOptions {service}
+ *   convert html attribute to Google map api options
+ * @description
+ *   set map data
+ *   Requires:  map directive
+ *   Restrict To:  Element
+ *
+ * @wn {String} method-name, run map.data[method-name] with attribute value
+ * @example
+ * Example:
+ *
+ *  <map zoom="11" center="[41.875696,-87.624207]">
+ *    <map-data load-geo-json="https://storage.googleapis.com/maps-devrel/google.json"></map-data>
+ *   </map>
+ */
+(function() {
+  'use strict';
+
+  angular.module('ngMap').directive('mapData', [
+    'Attr2MapOptions', 'NgMap', function(Attr2MapOptions, NgMap) {
+    var parser = Attr2MapOptions;
+    return {
+      restrict: 'E',
+      require: ['?^map','?^ngMap'],
+
+      link: function(scope, element, attrs, mapController) {
+        mapController = mapController[0] || mapController[1];
+        var filtered = parser.filter(attrs);
+        var options = parser.getOptions(filtered, {scope: scope});
+        var events = parser.getEvents(scope, filtered, events);
+
+        void 0;
+        NgMap.getMap(mapController.map.id).then(function(map) {
+          //options
+          for (var key in options) {
+            var val = options[key];
+            if (typeof scope[val] === "function") {
+              map.data[key](scope[val]);
+            } else {
+              map.data[key](val);
+            }
+          }
+
+          //events
+          for (var eventName in events) {
+            map.data.addListener(eventName, events[eventName]);
+          }
+        });
+      }
+     }; // return
+  }]);
+})();
+
+/**
+ * @ngdoc directive
+ * @name map-lazy-load
+ * @param Attr2Options {service} convert html attribute to Google map api options
+ * @description
+ *  Requires: Delay the initialization of map directive
+ *    until the map is ready to be rendered
+ *  Restrict To: Attribute
+ *
+ * @attr {String} map-lazy-load
+ *    Maps api script source file location.
+ *    Example:
+ *      'https://maps.google.com/maps/api/js'
+ * @attr {String} map-lazy-load-params
+ *   Maps api script source file location via angular scope variable.
+ *   Also requires the map-lazy-load attribute to be present in the directive.
+ *   Example: In your controller, set
+ *     $scope.googleMapsURL = 'https://maps.google.com/maps/api/js?v=3.20&client=XXXXXenter-api-key-hereXXXX'
+ *
+ * @example
+ * Example:
+ *
+ *   <div map-lazy-load="http://maps.google.com/maps/api/js">
+ *     <map center="Brampton" zoom="10">
+ *       <marker position="Brampton"></marker>
+ *     </map>
+ *   </div>
+ *
+ *   <div map-lazy-load="http://maps.google.com/maps/api/js"
+ *        map-lazy-load-params="{{googleMapsUrl}}">
+ *     <map center="Brampton" zoom="10">
+ *       <marker position="Brampton"></marker>
+ *     </map>
+ *   </div>
+ */
+/* global window, document */
+(function() {
+  'use strict';
+  var $timeout, $compile, src, savedHtml = [], elements = [];
+
+  var preLinkFunc = function(scope, element, attrs) {
+    var mapsUrl = attrs.mapLazyLoadParams || attrs.mapLazyLoad;
+
+    if(window.google === undefined || window.google.maps === undefined) {
+      elements.push({
+        scope: scope,
+        element: element,
+        savedHtml: savedHtml[elements.length],
+      });
+
+      window.lazyLoadCallback = function() {
+        void 0;
+        $timeout(function() { /* give some time to load */
+          elements.forEach(function(elm) {
+              elm.element.html(elm.savedHtml);
+              $compile(elm.element.contents())(elm.scope);
+          });
+        }, 100);
+      };
+
+      var scriptEl = document.createElement('script');
+      void 0;
+
+      scriptEl.src = mapsUrl +
+        (mapsUrl.indexOf('?') > -1 ? '&' : '?') +
+        'callback=lazyLoadCallback';
+
+        if (!document.querySelector('script[src="' + scriptEl.src + '"]')) {
+          document.body.appendChild(scriptEl);
+        }
+    } else {
+      element.html(savedHtml);
+      $compile(element.contents())(scope);
+    }
+  };
+
+  var compileFunc = function(tElement, tAttrs) {
+
+    (!tAttrs.mapLazyLoad) && void 0;
+    savedHtml.push(tElement.html());
+    src = tAttrs.mapLazyLoad;
+
+    /**
+     * if already loaded, stop processing it
+     */
+    if(window.google !== undefined && window.google.maps !== undefined) {
+      return false;
+    }
+
+    tElement.html('');  // will compile again after script is loaded
+
+    return {
+      pre: preLinkFunc
+    };
+  };
+
+  var mapLazyLoad = function(_$compile_, _$timeout_) {
+    $compile = _$compile_, $timeout = _$timeout_;
+    return {
+      compile: compileFunc
+    };
+  };
+  mapLazyLoad.$inject = ['$compile','$timeout'];
+
+  angular.module('ngMap').directive('mapLazyLoad', mapLazyLoad);
+})();
+
+/**
+ * @ngdoc directive
+ * @name map-type
+ * @param Attr2MapOptions {service} 
+ *   convert html attribute to Google map api options
+ * @description
+ *   Requires:  map directive
+ *   Restrict To:  Element
+ *
+ * @example
+ * Example:
+ *
+ *   <map zoom="13" center="34.04924594193164, -118.24104309082031">
+ *     <map-type name="coordinate" object="coordinateMapType"></map-type>
+ *   </map>
+ */
+(function() {
+  'use strict';
+
+  angular.module('ngMap').directive('mapType', ['$parse', 'NgMap',
+    function($parse, NgMap) {
+
+    return {
+      restrict: 'E',
+      require: ['?^map','?^ngMap'],
+
+      link: function(scope, element, attrs, mapController) {
+        mapController = mapController[0]||mapController[1];
+
+        var mapTypeName = attrs.name, mapTypeObject;
+        if (!mapTypeName) {
+          throw "invalid map-type name";
+        }
+        mapTypeObject = $parse(attrs.object)(scope);
+        if (!mapTypeObject) {
+          throw "invalid map-type object";
+        }
+
+        NgMap.getMap().then(function(map) {
+          map.mapTypes.set(mapTypeName, mapTypeObject);
+        });
+        mapController.addObject('mapTypes', mapTypeObject);
+      }
+     }; // return
+  }]);
+})();
+
+/**
+ * @ngdoc directive
+ * @memberof ngMap
+ * @name ng-map
+ * @param Attr2Options {service}
+ *  convert html attribute to Google map api options
+ * @description
+ * Implementation of {@link __MapController}
+ * Initialize a Google map within a `<div>` tag
+ *   with given options and register events
+ *
+ * @attr {Expression} map-initialized
+ *   callback function when map is initialized
+ *   e.g., map-initialized="mycallback(map)"
+ * @attr {Expression} geo-callback if center is an address or current location,
+ *   the expression is will be executed when geo-lookup is successful.
+ *   e.g., geo-callback="showMyStoreInfo()"
+ * @attr {Array} geo-fallback-center
+ *   The center of map incase geolocation failed. i.e. [0,0]
+ * @attr {Object} geo-location-options
+ *  The navigator geolocation options.
+ *  e.g., { maximumAge: 3000, timeout: 5000, enableHighAccuracy: true }.
+ *  If none specified, { timeout: 5000 }.
+ *  If timeout not specified, timeout: 5000 added
+ * @attr {Boolean} zoom-to-include-markers
+ *  When true, map boundary will be changed automatially
+ *  to include all markers when initialized
+ * @attr {Boolean} default-style
+ *  When false, the default styling,
+ *  `display:block;height:300px`, will be ignored.
+ * @attr {String} &lt;MapOption> Any Google map options,
+ *  https://developers.google.com/maps/documentation/javascript/reference?csw=1#MapOptions
+ * @attr {String} &lt;MapEvent> Any Google map events,
+ *  https://rawgit.com/allenhwkim/angularjs-google-maps/master/build/map_events.html
+ * @attr {Boolean} single-info-window
+ *  When true the map will only display one info window at the time,
+ *  if not set or false,
+ *  everytime an info window is open it will be displayed with the othe one.
+ * @attr {Boolean} trigger-resize
+ *  Default to false.  Set to true to trigger resize of the map.  Needs to be done anytime you resize the map
+ * @example
+ * Usage:
+ *   <map MAP_OPTIONS_OR_MAP_EVENTS ..>
+ *     ... Any children directives
+ *   </map>
+ *
+ * Example:
+ *   <map center="[40.74, -74.18]" on-click="doThat()">
+ *   </map>
+ *
+ *   <map geo-fallback-center="[40.74, -74.18]" zoom-to-inlude-markers="true">
+ *   </map>
+ */
+(function () {
+  'use strict';
+
+  var mapDirective = function () {
+    return {
+      restrict: 'AE',
+      controller: '__MapController',
+      controllerAs: 'ngmap'
+    };
+  };
+
+  angular.module('ngMap').directive('map', [mapDirective]);
+  angular.module('ngMap').directive('ngMap', [mapDirective]);
+})();
+
+/**
+ * @ngdoc directive
+ * @name maps-engine-layer
+ * @description
+ *   Requires:  map directive
+ *   Restrict To:  Element
+ *
+ * @example
+ * Example:
+ *  <map zoom="14" center="[59.322506, 18.010025]">
+ *    <maps-engine-layer layer-id="06673056454046135537-08896501997766553811">
+ *    </maps-engine-layer>
+ *  </map>
+ */
+(function() {
+  'use strict';
+
+  angular.module('ngMap').directive('mapsEngineLayer', ['Attr2MapOptions', function(Attr2MapOptions) {
+    var parser = Attr2MapOptions;
+
+    var getMapsEngineLayer = function(options, events) {
+      var layer = new google.maps.visualization.MapsEngineLayer(options);
+
+      for (var eventName in events) {
+        google.maps.event.addListener(layer, eventName, events[eventName]);
+      }
+
+      return layer;
+    };
+
+    return {
+      restrict: 'E',
+      require: ['?^map','?^ngMap'],
+
+      link: function(scope, element, attrs, mapController) {
+        mapController = mapController[0]||mapController[1];
+
+        var filtered = parser.filter(attrs);
+        var options = parser.getOptions(filtered, {scope: scope});
+        var events = parser.getEvents(scope, filtered, events);
+        void 0;
+
+        var layer = getMapsEngineLayer(options, events);
+        mapController.addObject('mapsEngineLayers', layer);
+      }
+     }; // return
+  }]);
+})();
+
+/**
+ * @ngdoc directive
+ * @name marker
+ * @param Attr2Options {service} convert html attribute to Google map api options
+ * @param NavigatorGeolocation It is used to find the current location
+ * @description
+ *  Draw a Google map marker on a map with given options and register events
+ *
+ *  Requires:  map directive
+ *
+ *  Restrict To:  Element
+ *
+ * @attr {String} position address, 'current', or [latitude, longitude]
+ *  example:
+ *    '1600 Pennsylvania Ave, 20500  Washingtion DC',
+ *    'current position',
+ *    '[40.74, -74.18]'
+ * @attr {Boolean} centered if set, map will be centered with this marker
+ * @attr {Expression} geo-callback if position is an address,
+ *   the expression is will be performed when geo-lookup is successful.
+ *   e.g., geo-callback="showStoreInfo()"
+ * @attr {Boolean} no-watcher if true, no attribute observer is added.
+ *   Useful for many ng-repeat
+ * @attr {String} &lt;MarkerOption>
+ *   [Any Marker options](https://developers.google.com/maps/documentation/javascript/reference?csw=1#MarkerOptions)
+ * @attr {String} &lt;MapEvent>
+ *   [Any Marker events](https://developers.google.com/maps/documentation/javascript/reference)
+ * @example
+ * Usage:
+ *   <map MAP_ATTRIBUTES>
+ *    <marker ANY_MARKER_OPTIONS ANY_MARKER_EVENTS"></MARKER>
+ *   </map>
+ *
+ * Example:
+ *   <map center="[40.74, -74.18]">
+ *    <marker position="[40.74, -74.18]" on-click="myfunc()"></div>
+ *   </map>
+ *
+ *   <map center="the cn tower">
+ *    <marker position="the cn tower" on-click="myfunc()"></div>
+ *   </map>
+ */
+/* global google */
+(function() {
+  'use strict';
+  var parser, $parse, NgMap;
+
+  var getMarker = function(options, events) {
+    var marker;
+
+    if (NgMap.defaultOptions.marker) {
+      for (var key in NgMap.defaultOptions.marker) {
+        if (typeof options[key] == 'undefined') {
+          void 0;
+          options[key] = NgMap.defaultOptions.marker[key];
+        }
+      }
+    }
+
+    if (!(options.position instanceof google.maps.LatLng)) {
+      options.position = new google.maps.LatLng(0,0);
+    }
+    marker = new google.maps.Marker(options);
+
+    /**
+     * set events
+     */
+    if (Object.keys(events).length > 0) {
+      void 0;
+    }
+    for (var eventName in events) {
+      if (eventName) {
+        google.maps.event.addListener(marker, eventName, events[eventName]);
+      }
+    }
+
+    return marker;
+  };
+
+  var linkFunc = function(scope, element, attrs, mapController) {
+    mapController = mapController[0]||mapController[1];
+
+    var orgAttrs = parser.orgAttributes(element);
+    var filtered = parser.filter(attrs);
+    var markerOptions = parser.getOptions(filtered, scope, {scope: scope});
+    var markerEvents = parser.getEvents(scope, filtered);
+    void 0;
+
+    var address;
+    if (!(markerOptions.position instanceof google.maps.LatLng)) {
+      address = markerOptions.position;
+    }
+    var marker = getMarker(markerOptions, markerEvents);
+    mapController.addObject('markers', marker);
+    if (address) {
+      NgMap.getGeoLocation(address).then(function(latlng) {
+        marker.setPosition(latlng);
+        markerOptions.centered && marker.map.setCenter(latlng);
+        var geoCallback = attrs.geoCallback;
+        geoCallback && $parse(geoCallback)(scope);
+      });
+    }
+
+    //set observers
+    mapController.observeAttrSetObj(orgAttrs, attrs, marker); /* observers */
+
+    element.bind('$destroy', function() {
+      mapController.deleteObject('markers', marker);
+    });
+  };
+
+  var marker = function(Attr2MapOptions, _$parse_, _NgMap_) {
+    parser = Attr2MapOptions;
+    $parse = _$parse_;
+    NgMap = _NgMap_;
+
+    return {
+      restrict: 'E',
+      require: ['^?map','?^ngMap'],
+      link: linkFunc
+    };
+  };
+
+  marker.$inject = ['Attr2MapOptions', '$parse', 'NgMap'];
+  angular.module('ngMap').directive('marker', marker);
+
+})();
+
+/**
+ * @ngdoc directive
+ * @name overlay-map-type
+ * @param Attr2MapOptions {service} convert html attribute to Google map api options
+ * @param $window {service}
+ * @description
+ *   Requires:  map directive
+ *   Restrict To:  Element
+ *
+ * @example
+ * Example:
+ *
+ * <map zoom="13" center="34.04924594193164, -118.24104309082031">
+ *   <overlay-map-type index="0" object="coordinateMapType"></map-type>
+ * </map>
+ */
+(function() {
+  'use strict';
+
+  angular.module('ngMap').directive('overlayMapType', [
+    'NgMap', function(NgMap) {
+
+    return {
+      restrict: 'E',
+      require: ['?^map','?^ngMap'],
+
+      link: function(scope, element, attrs, mapController) {
+        mapController = mapController[0]||mapController[1];
+
+        var initMethod = attrs.initMethod || "insertAt";
+        var overlayMapTypeObject = scope[attrs.object];
+
+        NgMap.getMap().then(function(map) {
+          if (initMethod == "insertAt") {
+            var index = parseInt(attrs.index, 10);
+            map.overlayMapTypes.insertAt(index, overlayMapTypeObject);
+          } else if (initMethod == "push") {
+            map.overlayMapTypes.push(overlayMapTypeObject);
+          }
+        });
+        mapController.addObject('overlayMapTypes', overlayMapTypeObject);
+      }
+     }; // return
+  }]);
+})();
+
+/**
+ * @ngdoc directive
+ * @name places-auto-complete
+ * @param Attr2MapOptions {service} convert html attribute to Google map api options
+ * @description
+ *   Provides address auto complete feature to an input element
+ *   Requires: input tag
+ *   Restrict To: Attribute
+ *
+ * @attr {AutoCompleteOptions}
+ *   [Any AutocompleteOptions](https://developers.google.com/maps/documentation/javascript/3.exp/reference#AutocompleteOptions)
+ *
+ * @example
+ * Example:
+ *   <script src="https://maps.googleapis.com/maps/api/js?libraries=places"></script>
+ *   <input places-auto-complete types="['geocode']" on-place-changed="myCallback(place)" component-restrictions="{country:'au'}"/>
+ */
+/* global google */
+(function() {
+  'use strict';
+
+  var placesAutoComplete = function(Attr2MapOptions, $timeout) {
+    var parser = Attr2MapOptions;
+
+    var linkFunc = function(scope, element, attrs, ngModelCtrl) {
+      if (attrs.placesAutoComplete ==='false') {
+        return false;
+      }
+      var filtered = parser.filter(attrs);
+      var options = parser.getOptions(filtered, {scope: scope});
+      var events = parser.getEvents(scope, filtered);
+      var autocomplete = new google.maps.places.Autocomplete(element[0], options);
+      for (var eventName in events) {
+        google.maps.event.addListener(autocomplete, eventName, events[eventName]);
+      }
+
+      var updateModel = function() {
+        $timeout(function(){
+          ngModelCtrl && ngModelCtrl.$setViewValue(element.val());
+        },100);
+      };
+      google.maps.event.addListener(autocomplete, 'place_changed', updateModel);
+      element[0].addEventListener('change', updateModel);
+
+      attrs.$observe('types', function(val) {
+        if (val) {
+          var optionValue = parser.toOptionValue(val, {key: 'types'});
+          autocomplete.setTypes(optionValue);
+        }
+      });
+	  
+	  attrs.$observe('componentRestrictions', function (val) {
+		 if (val) {
+		   autocomplete.setComponentRestrictions(scope.$eval(val));
+		 }
+	   });
+    };
+	
+    return {
+      restrict: 'A',
+      require: '?ngModel',
+      link: linkFunc
+    };
+  };
+
+  placesAutoComplete.$inject = ['Attr2MapOptions', '$timeout'];
+  angular.module('ngMap').directive('placesAutoComplete', placesAutoComplete);
+})();
+
+/**
+ * @ngdoc directive
+ * @name shape
+ * @param Attr2MapOptions {service} convert html attribute to Google map api options
+ * @description
+ *   Initialize a Google map shape in map with given options and register events
+ *   The shapes are:
+ *     . circle
+ *     . polygon
+ *     . polyline
+ *     . rectangle
+ *     . groundOverlay(or image)
+ *
+ *   Requires:  map directive
+ *
+ *   Restrict To:  Element
+ *
+ * @attr {Boolean} centered if set, map will be centered with this marker
+ * @attr {Expression} geo-callback if shape is a circle and the center is
+ *   an address, the expression is will be performed when geo-lookup
+ *   is successful. e.g., geo-callback="showDetail()"
+ * @attr {String} &lt;OPTIONS>
+ *   For circle, [any circle options](https://developers.google.com/maps/documentation/javascript/reference#CircleOptions)
+ *   For polygon, [any polygon options](https://developers.google.com/maps/documentation/javascript/reference#PolygonOptions)
+ *   For polyline, [any polyline options](https://developers.google.com/maps/documentation/javascript/reference#PolylineOptions)
+ *   For rectangle, [any rectangle options](https://developers.google.com/maps/documentation/javascript/reference#RectangleOptions)
+ *   For image, [any groundOverlay options](https://developers.google.com/maps/documentation/javascript/reference#GroundOverlayOptions)
+ * @attr {String} &lt;MapEvent> [Any Shape events](https://developers.google.com/maps/documentation/javascript/reference)
+ * @example
+ * Usage:
+ *   <map MAP_ATTRIBUTES>
+ *    <shape name=SHAPE_NAME ANY_SHAPE_OPTIONS ANY_SHAPE_EVENTS"></MARKER>
+ *   </map>
+ *
+ * Example:
+ *
+ *   <map zoom="11" center="[40.74, -74.18]">
+ *     <shape id="polyline" name="polyline" geodesic="true"
+ *       stroke-color="#FF0000" stroke-opacity="1.0" stroke-weight="2"
+ *       path="[[40.74,-74.18],[40.64,-74.10],[40.54,-74.05],[40.44,-74]]" >
+ *     </shape>
+ *   </map>
+ *
+ *   <map zoom="11" center="[40.74, -74.18]">
+ *     <shape id="polygon" name="polygon" stroke-color="#FF0000"
+ *       stroke-opacity="1.0" stroke-weight="2"
+ *       paths="[[40.74,-74.18],[40.64,-74.18],[40.84,-74.08],[40.74,-74.18]]" >
+ *     </shape>
+ *   </map>
+ *
+ *   <map zoom="11" center="[40.74, -74.18]">
+ *     <shape id="rectangle" name="rectangle" stroke-color='#FF0000'
+ *       stroke-opacity="0.8" stroke-weight="2"
+ *       bounds="[[40.74,-74.18], [40.78,-74.14]]" editable="true" >
+ *     </shape>
+ *   </map>
+ *
+ *   <map zoom="11" center="[40.74, -74.18]">
+ *     <shape id="circle" name="circle" stroke-color='#FF0000'
+ *       stroke-opacity="0.8"stroke-weight="2"
+ *       center="[40.70,-74.14]" radius="4000" editable="true" >
+ *     </shape>
+ *   </map>
+ *
+ *   <map zoom="11" center="[40.74, -74.18]">
+ *     <shape id="image" name="image"
+ *       url="https://www.lib.utexas.edu/maps/historical/newark_nj_1922.jpg"
+ *       bounds="[[40.71,-74.22],[40.77,-74.12]]" opacity="0.7"
+ *       clickable="true">
+ *     </shape>
+ *   </map>
+ *
+ *  For full-working example, please visit
+ *    [shape example](https://rawgit.com/allenhwkim/angularjs-google-maps/master/build/shape.html)
+ */
+/* global google */
+(function() {
+  'use strict';
+
+  var getShape = function(options, events) {
+    var shape;
+
+    var shapeName = options.name;
+    delete options.name;  //remove name bcoz it's not for options
+    void 0;
+
+    /**
+     * set options
+     */
+    switch(shapeName) {
+      case "circle":
+        if (!(options.center instanceof google.maps.LatLng)) {
+          options.center = new google.maps.LatLng(0,0);
+        } 
+        shape = new google.maps.Circle(options);
+        break;
+      case "polygon":
+        shape = new google.maps.Polygon(options);
+        break;
+      case "polyline":
+        shape = new google.maps.Polyline(options);
+        break;
+      case "rectangle":
+        shape = new google.maps.Rectangle(options);
+        break;
+      case "groundOverlay":
+      case "image":
+        var url = options.url;
+        var opts = {opacity: options.opacity, clickable: options.clickable, id:options.id};
+        shape = new google.maps.GroundOverlay(url, options.bounds, opts);
+        break;
+    }
+
+    /**
+     * set events
+     */
+    for (var eventName in events) {
+      if (events[eventName]) {
+        google.maps.event.addListener(shape, eventName, events[eventName]);
+      }
+    }
+    return shape;
+  };
+
+  var shape = function(Attr2MapOptions, $parse, NgMap) {
+    var parser = Attr2MapOptions;
+
+    var linkFunc = function(scope, element, attrs, mapController) {
+      mapController = mapController[0]||mapController[1];
+
+      var orgAttrs = parser.orgAttributes(element);
+      var filtered = parser.filter(attrs);
+      var shapeOptions = parser.getOptions(filtered, {scope: scope});
+      var shapeEvents = parser.getEvents(scope, filtered);
+
+      var address, shapeType;
+      shapeType = shapeOptions.name;
+      if (!(shapeOptions.center instanceof google.maps.LatLng)) {
+        address = shapeOptions.center;
+      }
+      var shape = getShape(shapeOptions, shapeEvents);
+      mapController.addObject('shapes', shape);
+
+      if (address && shapeType == 'circle') {
+        NgMap.getGeoLocation(address).then(function(latlng) {
+          shape.setCenter(latlng);
+          shape.centered && shape.map.setCenter(latlng);
+          var geoCallback = attrs.geoCallback;
+          geoCallback && $parse(geoCallback)(scope);
+        });
+      }
+
+      //set observers
+      mapController.observeAttrSetObj(orgAttrs, attrs, shape);
+      element.bind('$destroy', function() {
+        mapController.deleteObject('shapes', shape);
+      });
+    };
+
+    return {
+      restrict: 'E',
+      require: ['?^map','?^ngMap'],
+      link: linkFunc
+     }; // return
+  };
+  shape.$inject = ['Attr2MapOptions', '$parse', 'NgMap'];
+
+  angular.module('ngMap').directive('shape', shape);
+
+})();
+
+/**
+ * @ngdoc directive
+ * @name streetview-panorama
+ * @param Attr2MapOptions {service} convert html attribute to Google map api options
+ * @description
+ *   Requires:  map directive
+ *   Restrict To:  Element
+ *
+ * @attr container Optional, id or css selector, if given, streetview will be in the given html element
+ * @attr {String} &lt;StreetViewPanoramaOption>
+ *   [Any Google StreetViewPanorama options](https://developers.google.com/maps/documentation/javascript/reference?csw=1#StreetViewPanoramaOptions)
+ * @attr {String} &lt;StreetViewPanoramaEvent>
+ *   [Any Google StreetViewPanorama events](https://developers.google.com/maps/documentation/javascript/reference#StreetViewPanorama)
+ *
+ * @example
+ *   <map zoom="11" center="[40.688738,-74.043871]" >
+ *     <street-view-panorama
+ *       click-to-go="true"
+ *       disable-default-ui="true"
+ *       disable-double-click-zoom="true"
+ *       enable-close-button="true"
+ *       pano="my-pano"
+ *       position="40.688738,-74.043871"
+ *       pov="{heading:0, pitch: 90}"
+ *       scrollwheel="false"
+ *       visible="true">
+ *     </street-view-panorama>
+ *   </map>
+ */
+/* global google, document */
+(function() {
+  'use strict';
+
+  var streetViewPanorama = function(Attr2MapOptions, NgMap) {
+    var parser = Attr2MapOptions;
+
+    var getStreetViewPanorama = function(map, options, events) {
+      var svp, container;
+      if (options.container) {
+        container = document.getElementById(options.container);
+        container = container || document.querySelector(options.container);
+      }
+      if (container) {
+        svp = new google.maps.StreetViewPanorama(container, options);
+      } else {
+        svp = map.getStreetView();
+        svp.setOptions(options);
+      }
+
+      for (var eventName in events) {
+        eventName &&
+          google.maps.event.addListener(svp, eventName, events[eventName]);
+      }
+      return svp;
+    };
+
+    var linkFunc = function(scope, element, attrs) {
+      var filtered = parser.filter(attrs);
+      var options = parser.getOptions(filtered, {scope: scope});
+      var controlOptions = parser.getControlOptions(filtered);
+      var svpOptions = angular.extend(options, controlOptions);
+
+      var svpEvents = parser.getEvents(scope, filtered);
+      void 0;
+
+      NgMap.getMap().then(function(map) {
+        var svp = getStreetViewPanorama(map, svpOptions, svpEvents);
+
+        map.setStreetView(svp);
+        (!svp.getPosition()) && svp.setPosition(map.getCenter());
+        google.maps.event.addListener(svp, 'position_changed', function() {
+          if (svp.getPosition() !== map.getCenter()) {
+            map.setCenter(svp.getPosition());
+          }
+        });
+        //needed for geo-callback
+        var listener =
+          google.maps.event.addListener(map, 'center_changed', function() {
+            svp.setPosition(map.getCenter());
+            google.maps.event.removeListener(listener);
+          });
+      });
+
+    }; //link
+
+    return {
+      restrict: 'E',
+      require: ['?^map','?^ngMap'],
+      link: linkFunc
+    };
+
+  };
+  streetViewPanorama.$inject = ['Attr2MapOptions', 'NgMap'];
+
+  angular.module('ngMap').directive('streetViewPanorama', streetViewPanorama);
+})();
+
+/**
+ * @ngdoc directive
+ * @name traffic-layer
+ * @param Attr2MapOptions {service} convert html attribute to Google map api options
+ * @description
+ *   Requires:  map directive
+ *   Restrict To:  Element
+ *
+ * @example
+ * Example:
+ *
+ *   <map zoom="13" center="34.04924594193164, -118.24104309082031">
+ *     <traffic-layer></traffic-layer>
+ *    </map>
+ */
+(function() {
+  'use strict';
+
+  angular.module('ngMap').directive('trafficLayer', [
+    'Attr2MapOptions', function(Attr2MapOptions) {
+    var parser = Attr2MapOptions;
+
+    var getLayer = function(options, events) {
+      var layer = new google.maps.TrafficLayer(options);
+      for (var eventName in events) {
+        google.maps.event.addListener(layer, eventName, events[eventName]);
+      }
+      return layer;
+    };
+
+    return {
+      restrict: 'E',
+      require: ['?^map','?^ngMap'],
+
+      link: function(scope, element, attrs, mapController) {
+        mapController = mapController[0]||mapController[1];
+
+        var orgAttrs = parser.orgAttributes(element);
+        var filtered = parser.filter(attrs);
+        var options = parser.getOptions(filtered, {scope: scope});
+        var events = parser.getEvents(scope, filtered);
+        void 0;
+
+        var layer = getLayer(options, events);
+        mapController.addObject('trafficLayers', layer);
+        mapController.observeAttrSetObj(orgAttrs, attrs, layer);  //observers
+        element.bind('$destroy', function() {
+          mapController.deleteObject('trafficLayers', layer);
+        });
+      }
+     }; // return
+  }]);
+})();
+
+/**
+ * @ngdoc directive
+ * @name transit-layer
+ * @param Attr2MapOptions {service} convert html attribute to Google map api options
+ * @description
+ *   Requires:  map directive
+ *   Restrict To:  Element
+ *
+ * @example
+ * Example:
+ *
+ *  <map zoom="13" center="34.04924594193164, -118.24104309082031">
+ *    <transit-layer></transit-layer>
+ *  </map>
+ */
+(function() {
+  'use strict';
+
+  angular.module('ngMap').directive('transitLayer', [
+    'Attr2MapOptions', function(Attr2MapOptions) {
+    var parser = Attr2MapOptions;
+
+    var getLayer = function(options, events) {
+      var layer = new google.maps.TransitLayer(options);
+      for (var eventName in events) {
+        google.maps.event.addListener(layer, eventName, events[eventName]);
+      }
+      return layer;
+    };
+
+    return {
+      restrict: 'E',
+      require: ['?^map','?^ngMap'],
+
+      link: function(scope, element, attrs, mapController) {
+        mapController = mapController[0]||mapController[1];
+
+        var orgAttrs = parser.orgAttributes(element);
+        var filtered = parser.filter(attrs);
+        var options = parser.getOptions(filtered, {scope: scope});
+        var events = parser.getEvents(scope, filtered);
+        void 0;
+
+        var layer = getLayer(options, events);
+        mapController.addObject('transitLayers', layer);
+        mapController.observeAttrSetObj(orgAttrs, attrs, layer);  //observers
+        element.bind('$destroy', function() {
+          mapController.deleteObject('transitLayers', layer);
+        });
+      }
+     }; // return
+  }]);
+})();
+
+/**
+ * @ngdoc filter
+ * @name camel-case
+ * @description
+ *   Converts string to camel cased
+ */
+(function() {
+  'use strict';
+
+  var SPECIAL_CHARS_REGEXP = /([\:\-\_]+(.))/g;
+  var MOZ_HACK_REGEXP = /^moz([A-Z])/;
+
+  var camelCaseFilter = function() {
+    return function(name) {
+      return name.
+        replace(SPECIAL_CHARS_REGEXP,
+          function(_, separator, letter, offset) {
+            return offset ? letter.toUpperCase() : letter;
+        }).
+        replace(MOZ_HACK_REGEXP, 'Moz$1');
+    };
+  };
+
+  angular.module('ngMap').filter('camelCase', camelCaseFilter);
+})();
+
+/**
+ * @ngdoc filter
+ * @name escape-regex
+ * @description
+ *   Escapes all regex special characters in a string
+ */
+(function() {
+  'use strict';
+
+
+
+  var escapeRegexpFilter = function() {
+    return function(string) {
+			return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // $& means the whole matched string
+		};
+  };
+
+  angular.module('ngMap').filter('escapeRegexp', escapeRegexpFilter);
+})();
+
+/**
+ * @ngdoc filter
+ * @name jsonize
+ * @description
+ *   Converts json-like string to json string
+ */
+(function() {
+  'use strict';
+
+  var jsonizeFilter = function() {
+    return function(str) {
+      try {       // if parsable already, return as it is
+        JSON.parse(str);
+        return str;
+      } catch(e) { // if not parsable, change little
+        return str
+          // wrap keys without quote with valid double quote
+          .replace(/([\$\w]+)\s*:/g,
+            function(_, $1) {
+              return '"'+$1+'":';
+            }
+          )
+          // replacing single quote wrapped ones to double quote
+          .replace(/'([^']+)'/g,
+            function(_, $1) {
+              return '"'+$1+'"';
+            }
+          )
+          .replace(/''/g, '""');
+      }
+    };
+  };
+
+  angular.module('ngMap').filter('jsonize', jsonizeFilter);
+})();
+
+/**
+ * @ngdoc service
+ * @name Attr2MapOptions
+ * @description
+ *   Converts tag attributes to options used by google api v3 objects
+ */
+/* global google */
+(function() {
+  'use strict';
+
+  //i.e. "2015-08-12T06:12:40.858Z"
+  var isoDateRE =
+    /^(\d{4}\-\d\d\-\d\d([tT][\d:\.]*)?)([zZ]|([+\-])(\d\d):?(\d\d))?$/;
+
+  var Attr2MapOptions = function(
+      $parse, $timeout, $log, $interpolate, NavigatorGeolocation, GeoCoder,
+      camelCaseFilter, jsonizeFilter, escapeRegExp
+    ) {
+
+    var exprStartSymbol = $interpolate.startSymbol();
+    var exprEndSymbol = $interpolate.endSymbol();
+
+    /**
+     * Returns the attributes of an element as hash
+     * @memberof Attr2MapOptions
+     * @param {HTMLElement} el html element
+     * @returns {Hash} attributes
+     */
+    var orgAttributes = function(el) {
+      (el.length > 0) && (el = el[0]);
+      var orgAttributes = {};
+      for (var i=0; i<el.attributes.length; i++) {
+        var attr = el.attributes[i];
+        orgAttributes[attr.name] = attr.value;
+      }
+      return orgAttributes;
+    };
+
+    var getJSON = function(input) {
+      var re =/^[\+\-]?[0-9\.]+,[ ]*\ ?[\+\-]?[0-9\.]+$/; //lat,lng
+      if (input.match(re)) {
+        input = "["+input+"]";
+      }
+      return JSON.parse(jsonizeFilter(input));
+    };
+    
+    var getLatLng = function(input) {
+      var output = input;
+      if (input[0].constructor == Array) { 
+        if ((input[0][0].constructor == Array && input[0][0].length == 2) || input[0][0].constructor == Object) {
+            var preoutput;
+            var outputArray = [];
+            for (var i = 0; i < input.length; i++) {
+                preoutput = input[i].map(function(el){
+                    return new google.maps.LatLng(el[0], el[1]);
+                });
+                outputArray.push(preoutput);
+            }
+            output = outputArray;
+        } else {
+            output = input.map(function(el) {
+                return new google.maps.LatLng(el[0], el[1]);
+            });
+        }
+      } else if (!isNaN(parseFloat(input[0])) && isFinite(input[0])) {
+        output = new google.maps.LatLng(output[0], output[1]);
+      }
+      return output;
+    };
+
+    var toOptionValue = function(input, options) {
+      var output;
+      try { // 1. Number?
+        output = getNumber(input);
+      } catch(err) {
+        try { // 2. JSON?
+          var output = getJSON(input);
+          if (output instanceof Array) {
+            if (output[0].constructor == Object) {
+              output = output;
+            } else if (output[0] instanceof Array) {
+              if (output[0][0].constructor == Object) {
+                output = output;
+              } else {
+                output = getLatLng(output);
+              }
+            } else {
+                output = getLatLng(output);
+            }
+          }
+          // JSON is an object (not array or null)
+          else if (output === Object(output)) {
+            // check for nested hashes and convert to Google API options
+            var newOptions = options;
+            newOptions.doNotConverStringToNumber = true;
+            output = getOptions(output, newOptions);
+          }
+        } catch(err2) {
+          // 3. Google Map Object function Expression. i.e. LatLng(80,-49)
+          if (input.match(/^[A-Z][a-zA-Z0-9]+\(.*\)$/)) {
+            try {
+              var exp = "new google.maps."+input;
+              output = eval(exp); /* jshint ignore:line */
+            } catch(e) {
+              output = input;
+            }
+          // 4. Google Map Object constant Expression. i.e. MayTypeId.HYBRID
+          } else if (input.match(/^([A-Z][a-zA-Z0-9]+)\.([A-Z]+)$/)) {
+            try {
+              var matches = input.match(/^([A-Z][a-zA-Z0-9]+)\.([A-Z]+)$/);
+              output = google.maps[matches[1]][matches[2]];
+            } catch(e) {
+              output = input;
+            }
+          // 5. Google Map Object constant Expression. i.e. HYBRID
+          } else if (input.match(/^[A-Z]+$/)) {
+            try {
+              var capitalizedKey = options.key.charAt(0).toUpperCase() +
+                options.key.slice(1);
+              if (options.key.match(/temperatureUnit|windSpeedUnit|labelColor/)) {
+                capitalizedKey = capitalizedKey.replace(/s$/,"");
+                output = google.maps.weather[capitalizedKey][input];
+              } else {
+                output = google.maps[capitalizedKey][input];
+              }
+            } catch(e) {
+              output = input;
+            }
+          // 6. Date Object as ISO String
+          } else if (input.match(isoDateRE)) {
+            try {
+              output = new Date(input);
+            } catch(e) {
+              output = input;
+            }
+          // 7. evaluate dynamically bound values
+        } else if (input.match(new RegExp('^' + escapeRegExp(exprStartSymbol))) && options.scope) {
+            try {
+              var expr = input.replace(new RegExp(escapeRegExp(exprStartSymbol)),'').replace(new RegExp(escapeRegExp(exprEndSymbol), 'g'),'');
+              output = options.scope.$eval(expr);
+            } catch (err) {
+              output = input;
+            }
+          } else {
+            output = input;
+          }
+        } // catch(err2)
+      } // catch(err)
+
+      // convert output more for center and position
+      if (
+        (options.key == 'center' || options.key == 'position') &&
+        output instanceof Array
+      ) {
+        output = new google.maps.LatLng(output[0], output[1]);
+      }
+
+      // convert output more for shape bounds
+      if (options.key == 'bounds' && output instanceof Array) {
+        output = new google.maps.LatLngBounds(output[0], output[1]);
+      }
+
+      // convert output more for shape icons
+      if (options.key == 'icons' && output instanceof Array) {
+
+        for (var i=0; i<output.length; i++) {
+          var el = output[i];
+          if (el.icon.path.match(/^[A-Z_]+$/)) {
+            el.icon.path =  google.maps.SymbolPath[el.icon.path];
+          }
+        }
+      }
+
+      // convert output more for marker icon
+      if (options.key == 'icon' && output instanceof Object) {
+        if ((""+output.path).match(/^[A-Z_]+$/)) {
+          output.path = google.maps.SymbolPath[output.path];
+        }
+        for (var key in output) { //jshint ignore:line
+          var arr = output[key];
+          if (key == "anchor" || key == "origin" || key == "labelOrigin") {
+            output[key] = new google.maps.Point(arr[0], arr[1]);
+          } else if (key == "size" || key == "scaledSize") {
+            output[key] = new google.maps.Size(arr[0], arr[1]);
+          }
+        }
+      }
+
+      return output;
+    };
+
+    var getAttrsToObserve = function(attrs) {
+      var attrsToObserve = [];
+      var exprRegExp = new RegExp(escapeRegExp(exprStartSymbol) + '.*' + escapeRegExp(exprEndSymbol), 'g');
+
+      if (!attrs.noWatcher) {
+        for (var attrName in attrs) { //jshint ignore:line
+          var attrValue = attrs[attrName];
+          if (attrValue && attrValue.match(exprRegExp)) { // if attr value is {{..}}
+            attrsToObserve.push(camelCaseFilter(attrName));
+          }
+        }
+      }
+
+      return attrsToObserve;
+    };
+
+    /**
+     * filters attributes by skipping angularjs methods $.. $$..
+     * @memberof Attr2MapOptions
+     * @param {Hash} attrs tag attributes
+     * @returns {Hash} filterd attributes
+     */
+    var filter = function(attrs) {
+      var options = {};
+      for(var key in attrs) {
+        if (key.match(/^\$/) || key.match(/^ng[A-Z]/)) {
+          void(0);
+        } else {
+          options[key] = attrs[key];
+        }
+      }
+      return options;
+    };
+
+    /**
+     * converts attributes hash to Google Maps API v3 options
+     * ```
+     *  . converts numbers to number
+     *  . converts class-like string to google maps instance
+     *    i.e. `LatLng(1,1)` to `new google.maps.LatLng(1,1)`
+     *  . converts constant-like string to google maps constant
+     *    i.e. `MapTypeId.HYBRID` to `google.maps.MapTypeId.HYBRID`
+     *    i.e. `HYBRID"` to `google.maps.MapTypeId.HYBRID`
+     * ```
+     * @memberof Attr2MapOptions
+     * @param {Hash} attrs tag attributes
+     * @param {Hash} options
+     * @returns {Hash} options converted attributess
+     */
+    var getOptions = function(attrs, params) {
+      params = params || {};
+      var options = {};
+      for(var key in attrs) {
+        if (attrs[key] || attrs[key] === 0) {
+          if (key.match(/^on[A-Z]/)) { //skip events, i.e. on-click
+            continue;
+          } else if (key.match(/ControlOptions$/)) { // skip controlOptions
+            continue;
+          } else {
+            // nested conversions need to be typechecked
+            // (non-strings are fully converted)
+            if (typeof attrs[key] !== 'string') {
+              options[key] = attrs[key];
+            } else {
+              if (params.doNotConverStringToNumber &&
+                attrs[key].match(/^[0-9]+$/)
+              ) {
+                options[key] = attrs[key];
+              } else {
+                options[key] = toOptionValue(attrs[key], {key: key, scope: params.scope});
+              }
+            }
+          }
+        } // if (attrs[key])
+      } // for(var key in attrs)
+      return options;
+    };
+
+    /**
+     * converts attributes hash to scope-specific event function
+     * @memberof Attr2MapOptions
+     * @param {scope} scope angularjs scope
+     * @param {Hash} attrs tag attributes
+     * @returns {Hash} events converted events
+     */
+    var getEvents = function(scope, attrs) {
+      var events = {};
+      var toLowercaseFunc = function($1){
+        return "_"+$1.toLowerCase();
+      };
+      var EventFunc = function(attrValue) {
+        // funcName(argsStr)
+        var matches = attrValue.match(/([^\(]+)\(([^\)]*)\)/);
+        var funcName = matches[1];
+        var argsStr = matches[2].replace(/event[ ,]*/,'');  //remove string 'event'
+        var argsExpr = $parse("["+argsStr+"]"); //for perf when triggering event
+        return function(event) {
+          var args = argsExpr(scope); //get args here to pass updated model values
+          function index(obj,i) {return obj[i];}
+          var f = funcName.split('.').reduce(index, scope);
+          f && f.apply(this, [event].concat(args));
+          $timeout( function() {
+            scope.$apply();
+          });
+        };
+      };
+
+      for(var key in attrs) {
+        if (attrs[key]) {
+          if (!key.match(/^on[A-Z]/)) { //skip if not events
+            continue;
+          }
+
+          //get event name as underscored. i.e. zoom_changed
+          var eventName = key.replace(/^on/,'');
+          eventName = eventName.charAt(0).toLowerCase() + eventName.slice(1);
+          eventName = eventName.replace(/([A-Z])/g, toLowercaseFunc);
+
+          var attrValue = attrs[key];
+          events[eventName] = new EventFunc(attrValue);
+        }
+      }
+      return events;
+    };
+
+    /**
+     * control means map controls, i.e streetview, pan, etc, not a general control
+     * @memberof Attr2MapOptions
+     * @param {Hash} filtered filtered tag attributes
+     * @returns {Hash} Google Map options
+     */
+    var getControlOptions = function(filtered) {
+      var controlOptions = {};
+      if (typeof filtered != 'object') {
+        return false;
+      }
+
+      for (var attr in filtered) {
+        if (filtered[attr]) {
+          if (!attr.match(/(.*)ControlOptions$/)) {
+            continue; // if not controlOptions, skip it
+          }
+
+          //change invalid json to valid one, i.e. {foo:1} to {"foo": 1}
+          var orgValue = filtered[attr];
+          var newValue = orgValue.replace(/'/g, '"');
+          newValue = newValue.replace(/([^"]+)|("[^"]+")/g, function($0, $1, $2) {
+            if ($1) {
+              return $1.replace(/([a-zA-Z0-9]+?):/g, '"$1":');
+            } else {
+              return $2;
+            }
+          });
+          try {
+            var options = JSON.parse(newValue);
+            for (var key in options) { //assign the right values
+              if (options[key]) {
+                var value = options[key];
+                if (typeof value === 'string') {
+                  value = value.toUpperCase();
+                } else if (key === "mapTypeIds") {
+                  value = value.map( function(str) {
+                    if (str.match(/^[A-Z]+$/)) { // if constant
+                      return google.maps.MapTypeId[str.toUpperCase()];
+                    } else { // else, custom map-type
+                      return str;
+                    }
+                  });
+                }
+
+                if (key === "style") {
+                  var str = attr.charAt(0).toUpperCase() + attr.slice(1);
+                  var objName = str.replace(/Options$/,'')+"Style";
+                  options[key] = google.maps[objName][value];
+                } else if (key === "position") {
+                  options[key] = google.maps.ControlPosition[value];
+                } else {
+                  options[key] = value;
+                }
+              }
+            }
+            controlOptions[attr] = options;
+          } catch (e) {
+            void 0;
+          }
+        }
+      } // for
+
+      return controlOptions;
+    };
+
+    return {
+      filter: filter,
+      getOptions: getOptions,
+      getEvents: getEvents,
+      getControlOptions: getControlOptions,
+      toOptionValue: toOptionValue,
+      getAttrsToObserve: getAttrsToObserve,
+      orgAttributes: orgAttributes
+    }; // return
+
+  };
+  Attr2MapOptions.$inject= [
+    '$parse', '$timeout', '$log', '$interpolate', 'NavigatorGeolocation', 'GeoCoder',
+    'camelCaseFilter', 'jsonizeFilter', 'escapeRegexpFilter'
+  ];
+
+  angular.module('ngMap').service('Attr2MapOptions', Attr2MapOptions);
+})();
+
+/**
+ * @ngdoc service
+ * @name GeoCoder
+ * @description
+ *   Provides [defered/promise API](https://docs.angularjs.org/api/ng/service/$q)
+ *   service for Google Geocoder service
+ */
+(function() {
+  'use strict';
+  var $q;
+  /**
+   * @memberof GeoCoder
+   * @param {Hash} options
+   *   https://developers.google.com/maps/documentation/geocoding/#geocoding
+   * @example
+   * ```
+   *   GeoCoder.geocode({address: 'the cn tower'}).then(function(result) {
+   *     //... do something with result
+   *   });
+   * ```
+   * @returns {HttpPromise} Future object
+   */
+  var geocodeFunc = function(options) {
+    var deferred = $q.defer();
+    var geocoder = new google.maps.Geocoder();
+    geocoder.geocode(options, function (results, status) {
+      if (status == google.maps.GeocoderStatus.OK) {
+        deferred.resolve(results);
+      } else {
+        deferred.reject(status);
+      }
+    });
+    return deferred.promise;
+  };
+
+  var GeoCoder = function(_$q_) {
+    $q = _$q_;
+    return {
+      geocode : geocodeFunc
+    };
+  };
+  GeoCoder.$inject = ['$q'];
+
+  angular.module('ngMap').service('GeoCoder', GeoCoder);
+})();
+
+/**
+ * @ngdoc service
+ * @name GoogleMapsApi
+ * @description
+ *   Load Google Maps API Service
+ */
+(function() {
+  'use strict';
+  var $q;
+  var $timeout;
+
+  var GoogleMapsApi = function(_$q_, _$timeout_) {
+    $q = _$q_;
+    $timeout = _$timeout_;
+
+    return {
+
+      /**
+       * Load google maps into document by creating a script tag
+       * @memberof GoogleMapsApi
+       * @param {string} mapsUrl
+       * @example
+       *   GoogleMapsApi.load(myUrl).then(function() {
+       *     console.log('google map has been loaded')
+       *   });
+       */
+      load: function (mapsUrl) {
+
+        var deferred = $q.defer();
+
+        if (window.google === undefined || window.google.maps === undefined) {
+
+          window.lazyLoadCallback = function() {
+            $timeout(function() { /* give some time to load */
+              deferred.resolve(window.google)
+            }, 100);
+          };
+
+          var scriptEl = document.createElement('script');
+          scriptEl.src = mapsUrl +
+            (mapsUrl.indexOf('?') > -1 ? '&' : '?') +
+            'callback=lazyLoadCallback';
+
+          if (!document.querySelector('script[src="' + scriptEl.src + '"]')) {
+            document.body.appendChild(scriptEl);
+          }
+        } else {
+          deferred.resolve(window.google)
+        }
+
+        return deferred.promise;
+      }
+
+    }
+  }
+  GoogleMapsApi.$inject = ['$q', '$timeout'];
+
+  angular.module('ngMap').service('GoogleMapsApi', GoogleMapsApi);
+})();
+
+
+
+/**
+ * @ngdoc service
+ * @name NavigatorGeolocation
+ * @description
+ *  Provides [defered/promise API](https://docs.angularjs.org/api/ng/service/$q)
+ *  service for navigator.geolocation methods
+ */
+/* global google */
+(function() {
+  'use strict';
+  var $q;
+
+  /**
+   * @memberof NavigatorGeolocation
+   * @param {Object} geoLocationOptions the navigator geolocations options.
+   *  i.e. { maximumAge: 3000, timeout: 5000, enableHighAccuracy: true }.
+   *  If none specified, { timeout: 5000 }. 
+   *  If timeout not specified, timeout: 5000 added
+   * @param {function} success success callback function
+   * @param {function} failure failure callback function
+   * @example
+   * ```
+   *  NavigatorGeolocation.getCurrentPosition()
+   *    .then(function(position) {
+   *      var lat = position.coords.latitude, lng = position.coords.longitude;
+   *      .. do something lat and lng
+   *    });
+   * ```
+   * @returns {HttpPromise} Future object
+   */
+  var getCurrentPosition = function(geoLocationOptions) {
+    var deferred = $q.defer();
+    if (navigator.geolocation) {
+
+      if (geoLocationOptions === undefined) {
+        geoLocationOptions = { timeout: 5000 };
+      }
+      else if (geoLocationOptions.timeout === undefined) {
+        geoLocationOptions.timeout = 5000;
+      }
+
+      navigator.geolocation.getCurrentPosition(
+        function(position) {
+          deferred.resolve(position);
+        }, function(evt) {
+          void 0;
+          deferred.reject(evt);
+        },
+        geoLocationOptions
+      );
+    } else {
+      deferred.reject("Browser Geolocation service failed.");
+    }
+    return deferred.promise;
+  };
+
+  var NavigatorGeolocation = function(_$q_) {
+    $q = _$q_;
+    return {
+      getCurrentPosition: getCurrentPosition
+    };
+  };
+  NavigatorGeolocation.$inject = ['$q'];
+
+  angular.module('ngMap').
+    service('NavigatorGeolocation', NavigatorGeolocation);
+})();
+
+/**
+ * @ngdoc factory
+ * @name NgMapPool
+ * @description
+ *   Provide map instance to avoid memory leak
+ */
+(function() {
+  'use strict';
+  /**
+   * @memberof NgMapPool
+   * @desc map instance pool
+   */
+  var mapInstances = [];
+  var $window, $document, $timeout;
+
+  var add = function(el) {
+    var mapDiv = $document.createElement("div");
+    mapDiv.style.width = "100%";
+    mapDiv.style.height = "100%";
+    el.appendChild(mapDiv);
+    var map = new $window.google.maps.Map(mapDiv, {});
+    mapInstances.push(map);
+    return map;
+  };
+
+  var findById = function(el, id) {
+    var notInUseMap;
+    for (var i=0; i<mapInstances.length; i++) {
+      var map = mapInstances[i];
+      if (map.id == id && !map.inUse) {
+        var mapDiv = map.getDiv();
+        el.appendChild(mapDiv);
+        notInUseMap = map;
+        break;
+      }
+    }
+    return notInUseMap;
+  };
+
+  var findUnused = function(el) { //jshint ignore:line
+    var notInUseMap;
+    for (var i=0; i<mapInstances.length; i++) {
+      var map = mapInstances[i];
+      if (map.id) {
+        continue;
+      }
+      if (!map.inUse) {
+        var mapDiv = map.getDiv();
+        el.appendChild(mapDiv);
+        notInUseMap = map;
+        break;
+      }
+    }
+    return notInUseMap;
+  };
+
+  /**
+   * @memberof NgMapPool
+   * @function getMapInstance
+   * @param {HtmlElement} el map container element
+   * @return map instance for the given element
+   */
+  var getMapInstance = function(el) {
+    var map = findById(el, el.id) || findUnused(el);
+    if (!map) {
+      map = add(el);
+    } else {
+      /* firing map idle event, which is used by map controller */
+      $timeout(function() {
+        google.maps.event.trigger(map, 'idle');
+      }, 100);
+    }
+    map.inUse = true;
+    return map;
+  };
+
+  /**
+   * @memberof NgMapPool
+   * @function returnMapInstance
+   * @param {Map} an instance of google.maps.Map
+   * @desc sets the flag inUse of the given map instance to false, so that it 
+   * can be reused later
+   */
+  var returnMapInstance = function(map) {
+    map.inUse = false;
+  };
+  
+  /**
+   * @memberof NgMapPool
+   * @function resetMapInstances
+   * @desc resets mapInstance array
+   */
+  var resetMapInstances = function() {
+    for(var i = 0;i < mapInstances.length;i++) {
+        mapInstances[i] = null;
+    }
+    mapInstances = [];
+  };
+  
+  /**
+   * @memberof NgMapPool
+   * @function deleteMapInstance
+   * @desc delete a mapInstance
+   */
+  var deleteMapInstance= function(mapId) {
+	  for( var i=0; i<mapInstances.length; i++ ) {
+		  if( (mapInstances[i] !== null) && (mapInstances[i].id == mapId)) {
+			  mapInstances[i]= null;
+			  mapInstances.splice( i, 1 );
+		  }
+	  }
+  };
+
+  var NgMapPool = function(_$document_, _$window_, _$timeout_) {
+    $document = _$document_[0], $window = _$window_, $timeout = _$timeout_;
+
+    return {
+	  mapInstances: mapInstances,
+      resetMapInstances: resetMapInstances,
+      getMapInstance: getMapInstance,
+      returnMapInstance: returnMapInstance,
+      deleteMapInstance: deleteMapInstance
+    };
+  };
+
+  NgMapPool.$inject = [ '$document', '$window', '$timeout'];
+
+  angular.module('ngMap').factory('NgMapPool', NgMapPool);
+
+})();
+
+/**
+ * @ngdoc provider
+ * @name NgMap
+ * @description
+ *  common utility service for ng-map
+ */
+(function() {
+  'use strict';
+  var $window, $document, $q;
+  var NavigatorGeolocation, Attr2MapOptions, GeoCoder, camelCaseFilter, NgMapPool;
+
+  var mapControllers = {};
+
+  var getStyle = function(el, styleProp) {
+    var y;
+    if (el.currentStyle) {
+      y = el.currentStyle[styleProp];
+    } else if ($window.getComputedStyle) {
+      y = $document.defaultView.
+        getComputedStyle(el, null).
+        getPropertyValue(styleProp);
+    }
+    return y;
+  };
+
+  /**
+   * @memberof NgMap
+   * @function initMap
+   * @param id optional, id of the map. default 0
+   */
+  var initMap = function(id) {
+    var ctrl = mapControllers[id || 0];
+    if (!(ctrl.map instanceof google.maps.Map)) {
+      ctrl.initializeMap();
+      return ctrl.map;
+    } else {
+      void 0;
+    }
+  };
+
+  /**
+   * @memberof NgMap
+   * @function getMap
+   * @param {String} optional, id e.g., 'foo'
+   * @returns promise
+   */
+  var getMap = function(id, options) {
+    options = options || {};
+    id = typeof id === 'object' ? id.id : id;
+
+    var deferred = $q.defer();
+    var timeout = options.timeout || 10000;
+
+    function waitForMap(timeElapsed){
+      var keys = Object.keys(mapControllers);
+      var theFirstController = mapControllers[keys[0]];
+      if(id && mapControllers[id]){
+        deferred.resolve(mapControllers[id].map);
+      } else if (!id && theFirstController && theFirstController.map) {
+        deferred.resolve(theFirstController.map);
+      } else if (timeElapsed > timeout) {
+        deferred.reject('could not find map');
+      } else {
+        $window.setTimeout( function(){
+          waitForMap(timeElapsed+100);
+        }, 100);
+      }
+    }
+    waitForMap(0);
+
+    return deferred.promise;
+  };
+
+  /**
+   * @memberof NgMap
+   * @function addMap
+   * @param mapController {__MapContoller} a map controller
+   * @returns promise
+   */
+  var addMap = function(mapCtrl) {
+    if (mapCtrl.map) {
+      var len = Object.keys(mapControllers).length;
+      mapControllers[mapCtrl.map.id || len] = mapCtrl;
+    }
+  };
+
+  /**
+   * @memberof NgMap
+   * @function deleteMap
+   * @param mapController {__MapContoller} a map controller
+   */
+  var deleteMap = function(mapCtrl) {
+    var len = Object.keys(mapControllers).length - 1;
+    var mapId = mapCtrl.map.id || len;
+    if (mapCtrl.map) {
+      for (var eventName in mapCtrl.eventListeners) {
+        void 0;
+        var listener = mapCtrl.eventListeners[eventName];
+        google.maps.event.removeListener(listener);
+      }
+      if (mapCtrl.map.controls) {
+        mapCtrl.map.controls.forEach(function(ctrl) {
+          ctrl.clear();
+        });
+      }
+    }
+
+    //Remove Heatmap Layers
+    if (mapCtrl.map.heatmapLayers) {
+      Object.keys(mapCtrl.map.heatmapLayers).forEach(function (layer) {
+        mapCtrl.deleteObject('heatmapLayers', mapCtrl.map.heatmapLayers[layer]);
+      });
+    }
+
+    NgMapPool.deleteMapInstance(mapId);
+
+    delete mapControllers[mapId];
+  };
+
+  /**
+   * @memberof NgMap
+   * @function getGeoLocation
+   * @param {String} address
+   * @param {Hash} options geo options
+   * @returns promise
+   */
+  var getGeoLocation = function(string, options) {
+    var deferred = $q.defer();
+    if (!string || string.match(/^current/i)) { // current location
+      NavigatorGeolocation.getCurrentPosition(options).then(
+        function(position) {
+          var lat = position.coords.latitude;
+          var lng = position.coords.longitude;
+          var latLng = new google.maps.LatLng(lat,lng);
+          deferred.resolve(latLng);
+        },
+        function(error) {
+          deferred.reject(error);
+        }
+      );
+    } else {
+      GeoCoder.geocode({address: string}).then(
+        function(results) {
+          deferred.resolve(results[0].geometry.location);
+        },
+        function(error) {
+          deferred.reject(error);
+        }
+      );
+      // var geocoder = new google.maps.Geocoder();
+      // geocoder.geocode(options, function (results, status) {
+      //   if (status == google.maps.GeocoderStatus.OK) {
+      //     deferred.resolve(results);
+      //   } else {
+      //     deferred.reject(status);
+      //   }
+      // });
+    }
+
+    return deferred.promise;
+  };
+
+  /**
+   * @memberof NgMap
+   * @function observeAndSet
+   * @param {String} attrName attribute name
+   * @param {Object} object A Google maps object to be changed
+   * @returns attribue observe function
+   */
+  var observeAndSet = function(attrName, object) {
+    void 0;
+    return function(val) {
+      if (val) {
+        var setMethod = camelCaseFilter('set-'+attrName);
+        var optionValue = Attr2MapOptions.toOptionValue(val, {key: attrName});
+        if (object[setMethod]) { //if set method does exist
+          void 0;
+          /* if an location is being observed */
+          if (attrName.match(/center|position/) &&
+            typeof optionValue == 'string') {
+            getGeoLocation(optionValue).then(function(latlng) {
+              object[setMethod](latlng);
+            });
+          } else {
+            object[setMethod](optionValue);
+          }
+        }
+      }
+    };
+  };
+
+  /**
+   * @memberof NgMap
+   * @function setStyle
+   * @param {HtmlElement} map contriner element
+   * @desc set display, width, height of map container element
+   */
+  var setStyle = function(el) {
+    //if style is not given to the map element, set display and height
+    var defaultStyle = el.getAttribute('default-style');
+    if (defaultStyle == "true") {
+      el.style.display = 'block';
+      el.style.height = '300px';
+    } else {
+      if (getStyle(el, 'display') != "block") {
+        el.style.display = 'block';
+      }
+      if (getStyle(el, 'height').match(/^(0|auto)/)) {
+        el.style.height = '300px';
+      }
+    }
+  };
+
+  angular.module('ngMap').provider('NgMap', function() {
+    var defaultOptions = {};
+
+    /**
+     * @memberof NgMap
+     * @function setDefaultOptions
+     * @param {Hash} options
+     * @example
+     *  app.config(function(NgMapProvider) {
+     *    NgMapProvider.setDefaultOptions({
+     *      marker: {
+     *        optimized: false
+     *      }
+     *    });
+     *  });
+     */
+    this.setDefaultOptions = function(options) {
+      defaultOptions = options;
+    };
+
+    var NgMap = function(
+        _$window_, _$document_, _$q_,
+        _NavigatorGeolocation_, _Attr2MapOptions_,
+        _GeoCoder_, _camelCaseFilter_, _NgMapPool_
+      ) {
+      $window = _$window_;
+      $document = _$document_[0];
+      $q = _$q_;
+      NavigatorGeolocation = _NavigatorGeolocation_;
+      Attr2MapOptions = _Attr2MapOptions_;
+      GeoCoder = _GeoCoder_;
+      camelCaseFilter = _camelCaseFilter_;
+      NgMapPool = _NgMapPool_;
+
+      return {
+        defaultOptions: defaultOptions,
+        addMap: addMap,
+        deleteMap: deleteMap,
+        getMap: getMap,
+        initMap: initMap,
+        setStyle: setStyle,
+        getGeoLocation: getGeoLocation,
+        observeAndSet: observeAndSet
+      };
+    };
+    NgMap.$inject = [
+      '$window', '$document', '$q',
+      'NavigatorGeolocation', 'Attr2MapOptions',
+      'GeoCoder', 'camelCaseFilter', 'NgMapPool'
+    ];
+
+    this.$get = NgMap;
+  });
+})();
+
+/**
+ * @ngdoc service
+ * @name StreetView
+ * @description
+ *  Provides [defered/promise API](https://docs.angularjs.org/api/ng/service/$q)
+ *  service for [Google StreetViewService]
+ *  (https://developers.google.com/maps/documentation/javascript/streetview)
+ */
+(function() {
+  'use strict';
+  var $q;
+
+  /**
+   * Retrieves panorama id from the given map (and or position)
+   * @memberof StreetView
+   * @param {map} map Google map instance
+   * @param {LatLng} latlng Google LatLng instance
+   *   default: the center of the map
+   * @example
+   *   StreetView.getPanorama(map).then(function(panoId) {
+   *     $scope.panoId = panoId;
+   *   });
+   * @returns {HttpPromise} Future object
+   */
+  var getPanorama = function(map, latlng) {
+    latlng = latlng || map.getCenter();
+    var deferred = $q.defer();
+    var svs = new google.maps.StreetViewService();
+    svs.getPanoramaByLocation( (latlng||map.getCenter), 100,
+      function (data, status) {
+        // if streetView available
+        if (status === google.maps.StreetViewStatus.OK) {
+          deferred.resolve(data.location.pano);
+        } else {
+          // no street view available in this range, or some error occurred
+          deferred.resolve(false);
+          //deferred.reject('Geocoder failed due to: '+ status);
+        }
+      }
+    );
+    return deferred.promise;
+  };
+
+  /**
+   * Set panorama view on the given map with the panorama id
+   * @memberof StreetView
+   * @param {map} map Google map instance
+   * @param {String} panoId Panorama id fro getPanorama method
+   * @example
+   *   StreetView.setPanorama(map, panoId);
+   */
+  var setPanorama = function(map, panoId) {
+    var svp = new google.maps.StreetViewPanorama(
+      map.getDiv(), {enableCloseButton: true}
+    );
+    svp.setPano(panoId);
+  };
+
+  var StreetView = function(_$q_) {
+    $q = _$q_;
+
+    return {
+      getPanorama: getPanorama,
+      setPanorama: setPanorama
+    };
+  };
+  StreetView.$inject = ['$q'];
+
+  angular.module('ngMap').service('StreetView', StreetView);
+})();
+
+return 'ngMap';
+}));
+!function(e,t){"object"==typeof exports?module.exports=t(require("angular")):"function"==typeof define&&define.amd?define(["angular"],t):t(e.angular)}(this,function(angular){/**
+ * AngularJS Google Maps Ver. 1.18.3
+ *
+ * The MIT License (MIT)
+ * 
+ * Copyright (c) 2014, 2015, 1016 Allen Kim
+ * 
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of
+ * this software and associated documentation files (the "Software"), to deal in
+ * the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ * the Software, and to permit persons to whom the Software is furnished to do so,
+ * subject to the following conditions:
+ * 
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ * 
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+ * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+ * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+return angular.module("ngMap",[]),function(){"use strict";var e,t=function(t,n,o,a,r,i,s,p,c){e=i;var u=this,l=r.startSymbol(),g=r.endSymbol();u.mapOptions,u.mapEvents,u.eventListeners,u.addObject=function(e,t){if(u.map){u.map[e]=u.map[e]||{};var n=Object.keys(u.map[e]).length;u.map[e][t.id||n]=t,u.map instanceof google.maps.Map&&("infoWindows"!=e&&t.setMap&&t.setMap&&t.setMap(u.map),t.centered&&t.position&&u.map.setCenter(t.position),"markers"==e&&u.objectChanged("markers"),"customMarkers"==e&&u.objectChanged("customMarkers"))}},u.deleteObject=function(e,t){if(t.map){var n=t.map[e];for(var o in n)n[o]===t&&(google.maps.event.clearInstanceListeners(t),delete n[o]);t.map&&t.setMap&&t.setMap(null),"markers"==e&&u.objectChanged("markers"),"customMarkers"==e&&u.objectChanged("customMarkers")}},u.observeAttrSetObj=function(t,n,o){if(n.noWatcher)return!1;for(var a=e.getAttrsToObserve(t),r=0;r<a.length;r++){var i=a[r];n.$observe(i,s.observeAndSet(i,o))}},u.zoomToIncludeMarkers=function(){if(null!=u.map.markers&&Object.keys(u.map.markers).length>0||null!=u.map.customMarkers&&Object.keys(u.map.customMarkers).length>0){var e=new google.maps.LatLngBounds;for(var t in u.map.markers)e.extend(u.map.markers[t].getPosition());for(var n in u.map.customMarkers)e.extend(u.map.customMarkers[n].getPosition());u.mapOptions.maximumZoom&&(u.enableMaximumZoomCheck=!0),u.map.fitBounds(e)}},u.objectChanged=function(e){!u.map||"markers"!=e&&"customMarkers"!=e||"auto"!=u.map.zoomToIncludeMarkers||u.zoomToIncludeMarkers()},u.initializeMap=function(){var r=u.mapOptions,i=u.mapEvents,m=u.map;if(u.map=p.getMapInstance(n[0]),s.setStyle(n[0]),m){var f=e.filter(o),v=e.getOptions(f),y=e.getControlOptions(f);r=angular.extend(v,y);for(var h in m){var b=m[h];if("object"==typeof b)for(var M in b)u.addObject(h,b[M])}u.map.showInfoWindow=u.showInfoWindow,u.map.hideInfoWindow=u.hideInfoWindow}r.zoom=r.zoom||15;var O=r.center,w=new RegExp(c(l)+".*"+c(g));if(!r.center||"string"==typeof O&&O.match(w))r.center=new google.maps.LatLng(0,0);else if("string"==typeof O&&O.match(/^[0-9.-]*,[0-9.-]*$/)){var L=parseFloat(O.split(",")[0]),k=parseFloat(O.split(",")[1]);r.center=new google.maps.LatLng(L,k)}else if(!(O instanceof google.maps.LatLng)){var $=r.center;delete r.center,s.getGeoLocation($,r.geoLocationOptions).then(function(e){u.map.setCenter(e);var n=r.geoCallback;n&&a(n)(t)},function(){r.geoFallbackCenter&&u.map.setCenter(r.geoFallbackCenter)})}u.map.setOptions(r);for(var C in i){var j=i[C],A=google.maps.event.addListener(u.map,C,j);u.eventListeners[C]=A}u.observeAttrSetObj(d,o,u.map),u.singleInfoWindow=r.singleInfoWindow,google.maps.event.trigger(u.map,"resize"),google.maps.event.addListenerOnce(u.map,"idle",function(){s.addMap(u),r.zoomToIncludeMarkers&&u.zoomToIncludeMarkers(),t.map=u.map,t.$emit("mapInitialized",u.map),o.mapInitialized&&a(o.mapInitialized)(t,{map:u.map})}),r.zoomToIncludeMarkers&&r.maximumZoom&&google.maps.event.addListener(u.map,"zoom_changed",function(){1==u.enableMaximumZoomCheck&&(u.enableMaximumZoomCheck=!1,google.maps.event.addListenerOnce(u.map,"bounds_changed",function(){u.map.setZoom(Math.min(r.maximumZoom,u.map.getZoom()))}))})},t.google=google;var d=e.orgAttributes(n),m=e.filter(o),f=e.getOptions(m,{scope:t}),v=e.getControlOptions(m),y=angular.extend(f,v),h=e.getEvents(t,m);if(Object.keys(h).length&&void 0,u.mapOptions=y,u.mapEvents=h,u.eventListeners={},f.lazyInit){if(o.id&&0===o.id.indexOf(l,0)&&-1!==o.id.indexOf(g,o.id.length-g.length))var b=o.id.slice(2,-2),M=a(b)(t);else var M=o.id;u.map={id:M},s.addMap(u)}else u.initializeMap();f.triggerResize&&google.maps.event.trigger(u.map,"resize"),n.bind("$destroy",function(){p.returnMapInstance(u.map),s.deleteMap(u)})};t.$inject=["$scope","$element","$attrs","$parse","$interpolate","Attr2MapOptions","NgMap","NgMapPool","escapeRegexpFilter"],angular.module("ngMap").controller("__MapController",t)}(),function(){"use strict";var e,t=function(t,o,a,r){r=r[0]||r[1];var i=e.orgAttributes(o),s=e.filter(a),p=e.getOptions(s,{scope:t}),c=e.getEvents(t,s),u=n(p,c);r.addObject("bicyclingLayers",u),r.observeAttrSetObj(i,a,u),o.bind("$destroy",function(){r.deleteObject("bicyclingLayers",u)})},n=function(e,t){var n=new google.maps.BicyclingLayer(e);for(var o in t)google.maps.event.addListener(n,o,t[o]);return n},o=function(n){return e=n,{restrict:"E",require:["?^map","?^ngMap"],link:t}};o.$inject=["Attr2MapOptions"],angular.module("ngMap").directive("bicyclingLayer",o)}(),function(){"use strict";var e,t,n=function(t,n,o,a,r){a=a[0]||a[1];var i=e.filter(o),s=e.getOptions(i,{scope:t}),p=e.getEvents(t,i),c=n[0].parentElement.removeChild(n[0]),u=r();angular.element(c).append(u);for(var l in p)google.maps.event.addDomListener(c,l,p[l]);a.addObject("customControls",c);var g=s.position;a.map.controls[google.maps.ControlPosition[g]].push(c),n.bind("$destroy",function(){a.deleteObject("customControls",c)})},o=function(o,a){return e=o,t=a,{restrict:"E",require:["?^map","?^ngMap"],link:n,transclude:!0}};o.$inject=["Attr2MapOptions","NgMap"],angular.module("ngMap").directive("customControl",o)}(),function(){"use strict";var e,t,n,o,a=function(e){e=e||{},this.el=document.createElement("div"),this.el.style.display="inline-block",this.el.style.visibility="hidden",this.visible=!0;for(var t in e)this[t]=e[t]},r=function(){a.prototype=new google.maps.OverlayView,a.prototype.setContent=function(e,t){this.el.innerHTML=e,this.el.style.position="absolute",t&&n(angular.element(this.el).contents())(t)},a.prototype.getDraggable=function(){return this.draggable},a.prototype.setDraggable=function(e){this.draggable=e},a.prototype.getPosition=function(){return this.position},a.prototype.setPosition=function(e){e&&(this.position=e);var n=this;if(this.getProjection()&&"function"==typeof this.position.lng){var o=function(){if(n.getProjection()){var e=n.getProjection().fromLatLngToDivPixel(n.position),t=Math.round(e.x-n.el.offsetWidth/2),o=Math.round(e.y-n.el.offsetHeight-10);n.el.style.left=t+"px",n.el.style.top=o+"px",n.el.style.visibility="visible"}};n.el.offsetWidth&&n.el.offsetHeight?o():t(o,300)}},a.prototype.setZIndex=function(e){e&&(this.zIndex=e),this.el.style.zIndex=this.zIndex},a.prototype.getVisible=function(){return this.visible},a.prototype.setVisible=function(e){this.el.style.display=e?"inline-block":"none",this.visible=e},a.prototype.addClass=function(e){var t=this.el.className.trim().split(" ");-1==t.indexOf(e)&&t.push(e),this.el.className=t.join(" ")},a.prototype.removeClass=function(e){var t=this.el.className.split(" "),n=t.indexOf(e);n>-1&&t.splice(n,1),this.el.className=t.join(" ")},a.prototype.onAdd=function(){this.getPanes().overlayMouseTarget.appendChild(this.el)},a.prototype.draw=function(){this.setPosition(),this.setZIndex(this.zIndex),this.setVisible(this.visible)},a.prototype.onRemove=function(){this.el.parentNode.removeChild(this.el)}},i=function(n,r){return function(i,s,p,c){c=c[0]||c[1];var u=e.orgAttributes(s),l=e.filter(p),g=e.getOptions(l,{scope:i}),d=e.getEvents(i,l);s[0].style.display="none";var m=new a(g);t(function(){i.$watch("["+r.join(",")+"]",function(){m.setContent(n,i)},!0),m.setContent(s[0].innerHTML,i);var e=s[0].firstElementChild.className;m.addClass("custom-marker"),m.addClass(e),g.position instanceof google.maps.LatLng||o.getGeoLocation(g.position).then(function(e){m.setPosition(e)})});for(var f in d)google.maps.event.addDomListener(m.el,f,d[f]);c.addObject("customMarkers",m),c.observeAttrSetObj(u,p,m),s.bind("$destroy",function(){c.deleteObject("customMarkers",m)})}},s=function(a,s,p,c,u,l){e=c,t=a,n=s,o=u;var g=p.startSymbol(),d=p.endSymbol(),m=new RegExp(l(g)+"([^"+d.substring(0,1)+"]+)"+l(d),"g");return{restrict:"E",require:["?^map","?^ngMap"],compile:function(e){r(),e[0].style.display="none";var t=e.html(),n=t.match(m),o=[];return(n||[]).forEach(function(e){var t=e.replace(g,"").replace(d,"");-1==e.indexOf("::")&&-1==e.indexOf("this.")&&-1==o.indexOf(t)&&o.push(e.replace(g,"").replace(d,""))}),i(t,o)}}};s.$inject=["$timeout","$compile","$interpolate","Attr2MapOptions","NgMap","escapeRegexpFilter"],angular.module("ngMap").directive("customMarker",s)}(),function(){"use strict";var e,t,n,o=function(e,t){e.panel&&(e.panel=document.getElementById(e.panel)||document.querySelector(e.panel));var n=new google.maps.DirectionsRenderer(e);for(var o in t)google.maps.event.addListener(n,o,t[o]);return n},a=function(e,o){var a=new google.maps.DirectionsService,r=o;r.travelMode=r.travelMode||"DRIVING";var i=["origin","destination","travelMode","transitOptions","unitSystem","durationInTraffic","waypoints","optimizeWaypoints","provideRouteAlternatives","avoidHighways","avoidTolls","region"];for(var s in r)-1===i.indexOf(s)&&delete r[s];r.waypoints&&("[]"==r.waypoints||""===r.waypoints)&&delete r.waypoints;var p=function(n){a.route(n,function(n,o){o==google.maps.DirectionsStatus.OK&&t(function(){e.setDirections(n)})})};r.origin&&r.destination&&("current-location"==r.origin?n.getCurrentPosition().then(function(e){r.origin=new google.maps.LatLng(e.coords.latitude,e.coords.longitude),p(r)}):"current-location"==r.destination?n.getCurrentPosition().then(function(e){r.destination=new google.maps.LatLng(e.coords.latitude,e.coords.longitude),p(r)}):p(r))},r=function(r,i,s,p){var c=r;e=p,t=i,n=s;var u=function(n,r,i,s){s=s[0]||s[1];var p=c.orgAttributes(r),u=c.filter(i),l=c.getOptions(u,{scope:n}),g=c.getEvents(n,u),d=c.getAttrsToObserve(p),m=o(l,g);s.addObject("directionsRenderers",m),d.forEach(function(e){!function(e){i.$observe(e,function(n){if("panel"==e)t(function(){var e=document.getElementById(n)||document.querySelector(n);e&&m.setPanel(e)});else if(l[e]!==n){var o=c.toOptionValue(n,{key:e});l[e]=o,a(m,l)}})}(e)}),e.getMap().then(function(){a(m,l)}),r.bind("$destroy",function(){s.deleteObject("directionsRenderers",m)})};return{restrict:"E",require:["?^map","?^ngMap"],link:u}};r.$inject=["Attr2MapOptions","$timeout","NavigatorGeolocation","NgMap"],angular.module("ngMap").directive("directions",r)}(),function(){"use strict";angular.module("ngMap").directive("drawingManager",["Attr2MapOptions",function(e){var t=e;return{restrict:"E",require:["?^map","?^ngMap"],link:function(e,n,o,a){a=a[0]||a[1];var r=t.filter(o),i=t.getOptions(r,{scope:e}),s=t.getControlOptions(r),p=t.getEvents(e,r),c=new google.maps.drawing.DrawingManager({drawingMode:i.drawingmode,drawingControl:i.drawingcontrol,drawingControlOptions:s.drawingControlOptions,circleOptions:i.circleoptions,markerOptions:i.markeroptions,polygonOptions:i.polygonoptions,polylineOptions:i.polylineoptions,rectangleOptions:i.rectangleoptions});o.$observe("drawingControlOptions",function(e){c.drawingControlOptions=t.getControlOptions({drawingControlOptions:e}).drawingControlOptions,c.setDrawingMode(null),c.setMap(a.map)});for(var u in p)google.maps.event.addListener(c,u,p[u]);a.addObject("mapDrawingManager",c),n.bind("$destroy",function(){a.deleteObject("mapDrawingManager",c)})}}}])}(),function(){"use strict";angular.module("ngMap").directive("dynamicMapsEngineLayer",["Attr2MapOptions",function(e){var t=e,n=function(e,t){var n=new google.maps.visualization.DynamicMapsEngineLayer(e);for(var o in t)google.maps.event.addListener(n,o,t[o]);return n};return{restrict:"E",require:["?^map","?^ngMap"],link:function(e,o,a,r){r=r[0]||r[1];var i=t.filter(a),s=t.getOptions(i,{scope:e}),p=t.getEvents(e,i,p),c=n(s,p);r.addObject("mapsEngineLayers",c)}}}])}(),function(){"use strict";angular.module("ngMap").directive("fusionTablesLayer",["Attr2MapOptions",function(e){var t=e,n=function(e,t){var n=new google.maps.FusionTablesLayer(e);for(var o in t)google.maps.event.addListener(n,o,t[o]);return n};return{restrict:"E",require:["?^map","?^ngMap"],link:function(e,o,a,r){r=r[0]||r[1];var i=t.filter(a),s=t.getOptions(i,{scope:e}),p=t.getEvents(e,i,p),c=n(s,p);r.addObject("fusionTablesLayers",c),o.bind("$destroy",function(){r.deleteObject("fusionTablesLayers",c)})}}}])}(),function(){"use strict";angular.module("ngMap").directive("heatmapLayer",["Attr2MapOptions","$window",function(e,t){var n=e;return{restrict:"E",require:["?^map","?^ngMap"],link:function(e,o,a,r){r=r[0]||r[1];var i=n.filter(a),s=n.getOptions(i,{scope:e});if(s.data=t[a.data]||e[a.data],!(s.data instanceof Array))throw"invalid heatmap data";s.data=new google.maps.MVCArray(s.data);{var p=new google.maps.visualization.HeatmapLayer(s);n.getEvents(e,i)}r.addObject("heatmapLayers",p)}}}])}(),function(){"use strict";var e=function(e,t,n,o,a,r,i){var s=e,p=function(e,r,i){var s;!e.position||e.position instanceof google.maps.LatLng||delete e.position,s=new google.maps.InfoWindow(e);for(var p in r)p&&google.maps.event.addListener(s,p,r[p]);var c=n(function(e){angular.isString(i)?o(i).then(function(t){e(angular.element(t).wrap("<div>").parent())},function(e){throw"info-window template request failed: "+e}):e(i)}).then(function(e){var t=e.html().trim();if(1!=angular.element(t).length)throw"info-window working as a template must have a container";s.__template=t.replace(/\s?ng-non-bindable[='"]+/,"")});return s.__open=function(e,n,o){c.then(function(){a(function(){o&&(n.anchor=o);var a=t(s.__template)(n);s.setContent(a[0]),n.$apply(),o&&o.getPosition?s.open(e,o):o&&o instanceof google.maps.LatLng?(s.open(e),s.setPosition(o)):s.open(e);var r=s.content.parentElement.parentElement.parentElement;r.className="ng-map-info-window"})})},s},c=function(e,t,n,o){o=o[0]||o[1],t.css("display","none");var a,c=s.orgAttributes(t),u=s.filter(n),l=s.getOptions(u,{scope:e}),g=s.getEvents(e,u),d=p(l,g,l.template||t);!l.position||l.position instanceof google.maps.LatLng||(a=l.position),a&&i.getGeoLocation(a).then(function(t){d.setPosition(t),d.__open(o.map,e,t);var a=n.geoCallback;a&&r(a)(e)}),o.addObject("infoWindows",d),o.observeAttrSetObj(c,n,d),o.showInfoWindow=o.map.showInfoWindow=o.showInfoWindow||function(t,n,a){var r="string"==typeof t?t:n,i="string"==typeof t?n:a;if("string"==typeof i)if("undefined"!=typeof o.map.markers&&"undefined"!=typeof o.map.markers[i])i=o.map.markers[i];else{if("undefined"==typeof o.map.customMarkers||"undefined"==typeof o.map.customMarkers[i])throw new Error("Cant open info window for id "+i+". Marker or CustomMarker is not defined");i=o.map.customMarkers[i]}var s=o.map.infoWindows[r],p=i?i:this.getPosition?this:null;s.__open(o.map,e,p),o.singleInfoWindow&&(o.lastInfoWindow&&e.hideInfoWindow(o.lastInfoWindow),o.lastInfoWindow=r)},o.hideInfoWindow=o.map.hideInfoWindow=o.hideInfoWindow||function(e,t){var n="string"==typeof e?e:t,a=o.map.infoWindows[n];a.close()},e.showInfoWindow=o.map.showInfoWindow,e.hideInfoWindow=o.map.hideInfoWindow;var m=d.mapId?{id:d.mapId}:0;i.getMap(m).then(function(t){if(d.visible&&d.__open(t,e),d.visibleOnMarker){var n=d.visibleOnMarker;d.__open(t,e,t.markers[n])}})};return{restrict:"E",require:["?^map","?^ngMap"],link:c}};e.$inject=["Attr2MapOptions","$compile","$q","$templateRequest","$timeout","$parse","NgMap"],angular.module("ngMap").directive("infoWindow",e)}(),function(){"use strict";angular.module("ngMap").directive("kmlLayer",["Attr2MapOptions",function(e){var t=e,n=function(e,t){var n=new google.maps.KmlLayer(e);for(var o in t)google.maps.event.addListener(n,o,t[o]);return n};return{restrict:"E",require:["?^map","?^ngMap"],link:function(e,o,a,r){r=r[0]||r[1];var i=t.orgAttributes(o),s=t.filter(a),p=t.getOptions(s,{scope:e}),c=t.getEvents(e,s),u=n(p,c);r.addObject("kmlLayers",u),r.observeAttrSetObj(i,a,u),o.bind("$destroy",function(){r.deleteObject("kmlLayers",u)})}}}])}(),function(){"use strict";angular.module("ngMap").directive("mapData",["Attr2MapOptions","NgMap",function(e,t){var n=e;return{restrict:"E",require:["?^map","?^ngMap"],link:function(e,o,a,r){r=r[0]||r[1];var i=n.filter(a),s=n.getOptions(i,{scope:e}),p=n.getEvents(e,i,p);t.getMap(r.map.id).then(function(t){for(var n in s){var o=s[n];"function"==typeof e[o]?t.data[n](e[o]):t.data[n](o)}for(var a in p)t.data.addListener(a,p[a])})}}}])}(),function(){"use strict";var e,t,n,o=[],a=[],r=function(n,r,i){var s=i.mapLazyLoadParams||i.mapLazyLoad;if(void 0===window.google||void 0===window.google.maps){a.push({scope:n,element:r,savedHtml:o[a.length]}),window.lazyLoadCallback=function(){e(function(){a.forEach(function(e){e.element.html(e.savedHtml),t(e.element.contents())(e.scope)})},100)};var p=document.createElement("script");p.src=s+(s.indexOf("?")>-1?"&":"?")+"callback=lazyLoadCallback",document.querySelector('script[src="'+p.src+'"]')||document.body.appendChild(p)}else r.html(o),t(r.contents())(n)},i=function(e,t){return!t.mapLazyLoad&&void 0,o.push(e.html()),n=t.mapLazyLoad,void 0!==window.google&&void 0!==window.google.maps?!1:(e.html(""),{pre:r})},s=function(n,o){return t=n,e=o,{compile:i}};s.$inject=["$compile","$timeout"],angular.module("ngMap").directive("mapLazyLoad",s)}(),function(){"use strict";angular.module("ngMap").directive("mapType",["$parse","NgMap",function(e,t){return{restrict:"E",require:["?^map","?^ngMap"],link:function(n,o,a,r){r=r[0]||r[1];var i,s=a.name;if(!s)throw"invalid map-type name";if(i=e(a.object)(n),!i)throw"invalid map-type object";t.getMap().then(function(e){e.mapTypes.set(s,i)}),r.addObject("mapTypes",i)}}}])}(),function(){"use strict";var e=function(){return{restrict:"AE",controller:"__MapController",controllerAs:"ngmap"}};angular.module("ngMap").directive("map",[e]),angular.module("ngMap").directive("ngMap",[e])}(),function(){"use strict";angular.module("ngMap").directive("mapsEngineLayer",["Attr2MapOptions",function(e){var t=e,n=function(e,t){var n=new google.maps.visualization.MapsEngineLayer(e);for(var o in t)google.maps.event.addListener(n,o,t[o]);return n};return{restrict:"E",require:["?^map","?^ngMap"],link:function(e,o,a,r){r=r[0]||r[1];var i=t.filter(a),s=t.getOptions(i,{scope:e}),p=t.getEvents(e,i,p),c=n(s,p);r.addObject("mapsEngineLayers",c)}}}])}(),function(){"use strict";var e,t,n,o=function(e,t){var o;if(n.defaultOptions.marker)for(var a in n.defaultOptions.marker)"undefined"==typeof e[a]&&(e[a]=n.defaultOptions.marker[a]);e.position instanceof google.maps.LatLng||(e.position=new google.maps.LatLng(0,0)),o=new google.maps.Marker(e),Object.keys(t).length>0;for(var r in t)r&&google.maps.event.addListener(o,r,t[r]);return o},a=function(a,r,i,s){s=s[0]||s[1];var p,c=e.orgAttributes(r),u=e.filter(i),l=e.getOptions(u,a,{scope:a}),g=e.getEvents(a,u);l.position instanceof google.maps.LatLng||(p=l.position);var d=o(l,g);s.addObject("markers",d),p&&n.getGeoLocation(p).then(function(e){d.setPosition(e),l.centered&&d.map.setCenter(e);var n=i.geoCallback;n&&t(n)(a)}),s.observeAttrSetObj(c,i,d),r.bind("$destroy",function(){s.deleteObject("markers",d)})},r=function(o,r,i){return e=o,t=r,n=i,{restrict:"E",require:["^?map","?^ngMap"],link:a}};r.$inject=["Attr2MapOptions","$parse","NgMap"],angular.module("ngMap").directive("marker",r)}(),function(){"use strict";angular.module("ngMap").directive("overlayMapType",["NgMap",function(e){return{restrict:"E",require:["?^map","?^ngMap"],link:function(t,n,o,a){a=a[0]||a[1];var r=o.initMethod||"insertAt",i=t[o.object];e.getMap().then(function(e){if("insertAt"==r){var t=parseInt(o.index,10);e.overlayMapTypes.insertAt(t,i)}else"push"==r&&e.overlayMapTypes.push(i)}),a.addObject("overlayMapTypes",i)}}}])}(),function(){"use strict";var e=function(e,t){var n=e,o=function(e,o,a,r){if("false"===a.placesAutoComplete)return!1;var i=n.filter(a),s=n.getOptions(i,{scope:e}),p=n.getEvents(e,i),c=new google.maps.places.Autocomplete(o[0],s);for(var u in p)google.maps.event.addListener(c,u,p[u]);var l=function(){t(function(){r&&r.$setViewValue(o.val())},100)};google.maps.event.addListener(c,"place_changed",l),o[0].addEventListener("change",l),a.$observe("types",function(e){if(e){var t=n.toOptionValue(e,{key:"types"});c.setTypes(t)}}),a.$observe("componentRestrictions",function(t){t&&c.setComponentRestrictions(e.$eval(t))})};return{restrict:"A",require:"?ngModel",link:o}};e.$inject=["Attr2MapOptions","$timeout"],angular.module("ngMap").directive("placesAutoComplete",e)}(),function(){"use strict";var e=function(e,t){var n,o=e.name;switch(delete e.name,o){case"circle":e.center instanceof google.maps.LatLng||(e.center=new google.maps.LatLng(0,0)),n=new google.maps.Circle(e);break;case"polygon":n=new google.maps.Polygon(e);break;case"polyline":n=new google.maps.Polyline(e);break;case"rectangle":n=new google.maps.Rectangle(e);break;case"groundOverlay":case"image":var a=e.url,r={opacity:e.opacity,clickable:e.clickable,id:e.id};n=new google.maps.GroundOverlay(a,e.bounds,r)}for(var i in t)t[i]&&google.maps.event.addListener(n,i,t[i]);return n},t=function(t,n,o){var a=t,r=function(t,r,i,s){s=s[0]||s[1];var p,c,u=a.orgAttributes(r),l=a.filter(i),g=a.getOptions(l,{scope:t}),d=a.getEvents(t,l);c=g.name,g.center instanceof google.maps.LatLng||(p=g.center);var m=e(g,d);s.addObject("shapes",m),p&&"circle"==c&&o.getGeoLocation(p).then(function(e){m.setCenter(e),m.centered&&m.map.setCenter(e);var o=i.geoCallback;o&&n(o)(t)}),s.observeAttrSetObj(u,i,m),r.bind("$destroy",function(){s.deleteObject("shapes",m)})};return{restrict:"E",require:["?^map","?^ngMap"],link:r}};t.$inject=["Attr2MapOptions","$parse","NgMap"],angular.module("ngMap").directive("shape",t)}(),function(){"use strict";var e=function(e,t){var n=e,o=function(e,t,n){var o,a;t.container&&(a=document.getElementById(t.container),a=a||document.querySelector(t.container)),a?o=new google.maps.StreetViewPanorama(a,t):(o=e.getStreetView(),o.setOptions(t));for(var r in n)r&&google.maps.event.addListener(o,r,n[r]);return o},a=function(e,a,r){var i=n.filter(r),s=n.getOptions(i,{scope:e}),p=n.getControlOptions(i),c=angular.extend(s,p),u=n.getEvents(e,i);t.getMap().then(function(e){var t=o(e,c,u);e.setStreetView(t),!t.getPosition()&&t.setPosition(e.getCenter()),google.maps.event.addListener(t,"position_changed",function(){t.getPosition()!==e.getCenter()&&e.setCenter(t.getPosition())});var n=google.maps.event.addListener(e,"center_changed",function(){t.setPosition(e.getCenter()),google.maps.event.removeListener(n)})})};return{restrict:"E",require:["?^map","?^ngMap"],link:a}};e.$inject=["Attr2MapOptions","NgMap"],angular.module("ngMap").directive("streetViewPanorama",e)}(),function(){"use strict";angular.module("ngMap").directive("trafficLayer",["Attr2MapOptions",function(e){var t=e,n=function(e,t){var n=new google.maps.TrafficLayer(e);for(var o in t)google.maps.event.addListener(n,o,t[o]);return n};return{restrict:"E",require:["?^map","?^ngMap"],link:function(e,o,a,r){r=r[0]||r[1];var i=t.orgAttributes(o),s=t.filter(a),p=t.getOptions(s,{scope:e}),c=t.getEvents(e,s),u=n(p,c);r.addObject("trafficLayers",u),r.observeAttrSetObj(i,a,u),o.bind("$destroy",function(){r.deleteObject("trafficLayers",u)})}}}])}(),function(){"use strict";angular.module("ngMap").directive("transitLayer",["Attr2MapOptions",function(e){var t=e,n=function(e,t){var n=new google.maps.TransitLayer(e);for(var o in t)google.maps.event.addListener(n,o,t[o]);return n};return{restrict:"E",require:["?^map","?^ngMap"],link:function(e,o,a,r){r=r[0]||r[1];var i=t.orgAttributes(o),s=t.filter(a),p=t.getOptions(s,{scope:e}),c=t.getEvents(e,s),u=n(p,c);r.addObject("transitLayers",u),r.observeAttrSetObj(i,a,u),o.bind("$destroy",function(){r.deleteObject("transitLayers",u)})}}}])}(),function(){"use strict";var e=/([\:\-\_]+(.))/g,t=/^moz([A-Z])/,n=function(){return function(n){return n.replace(e,function(e,t,n,o){return o?n.toUpperCase():n}).replace(t,"Moz$1")}};angular.module("ngMap").filter("camelCase",n)}(),function(){"use strict";var e=function(){return function(e){return e.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")}};angular.module("ngMap").filter("escapeRegexp",e)}(),function(){"use strict";var e=function(){return function(e){try{return JSON.parse(e),e}catch(t){return e.replace(/([\$\w]+)\s*:/g,function(e,t){return'"'+t+'":'}).replace(/'([^']+)'/g,function(e,t){return'"'+t+'"'}).replace(/''/g,'""')}}};angular.module("ngMap").filter("jsonize",e)}(),function(){"use strict";var isoDateRE=/^(\d{4}\-\d\d\-\d\d([tT][\d:\.]*)?)([zZ]|([+\-])(\d\d):?(\d\d))?$/,Attr2MapOptions=function($parse,$timeout,$log,$interpolate,NavigatorGeolocation,GeoCoder,camelCaseFilter,jsonizeFilter,escapeRegExp){var exprStartSymbol=$interpolate.startSymbol(),exprEndSymbol=$interpolate.endSymbol(),orgAttributes=function(e){e.length>0&&(e=e[0]);for(var t={},n=0;n<e.attributes.length;n++){var o=e.attributes[n];t[o.name]=o.value}return t},getJSON=function(e){var t=/^[\+\-]?[0-9\.]+,[ ]*\ ?[\+\-]?[0-9\.]+$/;return e.match(t)&&(e="["+e+"]"),JSON.parse(jsonizeFilter(e))},getLatLng=function(e){var t=e;if(e[0].constructor==Array)if(e[0][0].constructor==Array&&2==e[0][0].length||e[0][0].constructor==Object){for(var n,o=[],a=0;a<e.length;a++)n=e[a].map(function(e){return new google.maps.LatLng(e[0],e[1])}),o.push(n);t=o}else t=e.map(function(e){return new google.maps.LatLng(e[0],e[1])});else!isNaN(parseFloat(e[0]))&&isFinite(e[0])&&(t=new google.maps.LatLng(t[0],t[1]));return t},toOptionValue=function(input,options){var output;try{output=getNumber(input)}catch(err){try{var output=getJSON(input);if(output instanceof Array)output=output[0].constructor==Object?output:output[0]instanceof Array?output[0][0].constructor==Object?output:getLatLng(output):getLatLng(output);else if(output===Object(output)){var newOptions=options;newOptions.doNotConverStringToNumber=!0,output=getOptions(output,newOptions)}}catch(err2){if(input.match(/^[A-Z][a-zA-Z0-9]+\(.*\)$/))try{var exp="new google.maps."+input;output=eval(exp)}catch(e){output=input}else if(input.match(/^([A-Z][a-zA-Z0-9]+)\.([A-Z]+)$/))try{var matches=input.match(/^([A-Z][a-zA-Z0-9]+)\.([A-Z]+)$/);output=google.maps[matches[1]][matches[2]]}catch(e){output=input}else if(input.match(/^[A-Z]+$/))try{var capitalizedKey=options.key.charAt(0).toUpperCase()+options.key.slice(1);options.key.match(/temperatureUnit|windSpeedUnit|labelColor/)?(capitalizedKey=capitalizedKey.replace(/s$/,""),output=google.maps.weather[capitalizedKey][input]):output=google.maps[capitalizedKey][input]}catch(e){output=input}else if(input.match(isoDateRE))try{output=new Date(input)}catch(e){output=input}else if(input.match(new RegExp("^"+escapeRegExp(exprStartSymbol)))&&options.scope)try{var expr=input.replace(new RegExp(escapeRegExp(exprStartSymbol)),"").replace(new RegExp(escapeRegExp(exprEndSymbol),"g"),"");output=options.scope.$eval(expr)}catch(err){output=input}else output=input}}if(("center"==options.key||"position"==options.key)&&output instanceof Array&&(output=new google.maps.LatLng(output[0],output[1])),"bounds"==options.key&&output instanceof Array&&(output=new google.maps.LatLngBounds(output[0],output[1])),"icons"==options.key&&output instanceof Array)for(var i=0;i<output.length;i++){var el=output[i];el.icon.path.match(/^[A-Z_]+$/)&&(el.icon.path=google.maps.SymbolPath[el.icon.path])}if("icon"==options.key&&output instanceof Object){(""+output.path).match(/^[A-Z_]+$/)&&(output.path=google.maps.SymbolPath[output.path]);for(var key in output){var arr=output[key];"anchor"==key||"origin"==key||"labelOrigin"==key?output[key]=new google.maps.Point(arr[0],arr[1]):("size"==key||"scaledSize"==key)&&(output[key]=new google.maps.Size(arr[0],arr[1]))}}return output},getAttrsToObserve=function(e){var t=[],n=new RegExp(escapeRegExp(exprStartSymbol)+".*"+escapeRegExp(exprEndSymbol),"g");if(!e.noWatcher)for(var o in e){var a=e[o];a&&a.match(n)&&t.push(camelCaseFilter(o))}return t},filter=function(e){var t={};for(var n in e)n.match(/^\$/)||n.match(/^ng[A-Z]/)||(t[n]=e[n]);return t},getOptions=function(e,t){t=t||{};var n={};for(var o in e)if(e[o]||0===e[o]){if(o.match(/^on[A-Z]/))continue;if(o.match(/ControlOptions$/))continue;n[o]="string"!=typeof e[o]?e[o]:t.doNotConverStringToNumber&&e[o].match(/^[0-9]+$/)?e[o]:toOptionValue(e[o],{key:o,scope:t.scope})}return n},getEvents=function(e,t){var n={},o=function(e){return"_"+e.toLowerCase()},a=function(t){var n=t.match(/([^\(]+)\(([^\)]*)\)/),o=n[1],a=n[2].replace(/event[ ,]*/,""),r=$parse("["+a+"]");return function(t){function n(e,t){return e[t]}var a=r(e),i=o.split(".").reduce(n,e);i&&i.apply(this,[t].concat(a)),$timeout(function(){e.$apply()})}};for(var r in t)if(t[r]){if(!r.match(/^on[A-Z]/))continue;var i=r.replace(/^on/,"");i=i.charAt(0).toLowerCase()+i.slice(1),i=i.replace(/([A-Z])/g,o);var s=t[r];n[i]=new a(s)}return n},getControlOptions=function(e){var t={};if("object"!=typeof e)return!1;for(var n in e)if(e[n]){if(!n.match(/(.*)ControlOptions$/))continue;var o=e[n],a=o.replace(/'/g,'"');a=a.replace(/([^"]+)|("[^"]+")/g,function(e,t,n){return t?t.replace(/([a-zA-Z0-9]+?):/g,'"$1":'):n});try{var r=JSON.parse(a);for(var i in r)if(r[i]){var s=r[i];if("string"==typeof s?s=s.toUpperCase():"mapTypeIds"===i&&(s=s.map(function(e){return e.match(/^[A-Z]+$/)?google.maps.MapTypeId[e.toUpperCase()]:e})),"style"===i){var p=n.charAt(0).toUpperCase()+n.slice(1),c=p.replace(/Options$/,"")+"Style";r[i]=google.maps[c][s]}else r[i]="position"===i?google.maps.ControlPosition[s]:s}t[n]=r}catch(u){}}return t};return{filter:filter,getOptions:getOptions,getEvents:getEvents,getControlOptions:getControlOptions,toOptionValue:toOptionValue,getAttrsToObserve:getAttrsToObserve,orgAttributes:orgAttributes}};Attr2MapOptions.$inject=["$parse","$timeout","$log","$interpolate","NavigatorGeolocation","GeoCoder","camelCaseFilter","jsonizeFilter","escapeRegexpFilter"],angular.module("ngMap").service("Attr2MapOptions",Attr2MapOptions)}(),function(){"use strict";var e,t=function(t){var n=e.defer(),o=new google.maps.Geocoder;return o.geocode(t,function(e,t){t==google.maps.GeocoderStatus.OK?n.resolve(e):n.reject(t)}),n.promise},n=function(n){return e=n,{geocode:t}};n.$inject=["$q"],angular.module("ngMap").service("GeoCoder",n)}(),function(){"use strict";var e,t,n=function(n,o){return e=n,t=o,{load:function(n){var o=e.defer();if(void 0===window.google||void 0===window.google.maps){window.lazyLoadCallback=function(){t(function(){o.resolve(window.google)},100)};var a=document.createElement("script");a.src=n+(n.indexOf("?")>-1?"&":"?")+"callback=lazyLoadCallback",document.querySelector('script[src="'+a.src+'"]')||document.body.appendChild(a)}else o.resolve(window.google);return o.promise}}};n.$inject=["$q","$timeout"],angular.module("ngMap").service("GoogleMapsApi",n)}(),function(){"use strict";var e,t=function(t){var n=e.defer();return navigator.geolocation?(void 0===t?t={timeout:5e3}:void 0===t.timeout&&(t.timeout=5e3),navigator.geolocation.getCurrentPosition(function(e){n.resolve(e)},function(e){n.reject(e)},t)):n.reject("Browser Geolocation service failed."),n.promise},n=function(n){return e=n,{getCurrentPosition:t}};n.$inject=["$q"],angular.module("ngMap").service("NavigatorGeolocation",n)}(),function(){"use strict";var e,t,n,o=[],a=function(n){var a=t.createElement("div");a.style.width="100%",a.style.height="100%",n.appendChild(a);var r=new e.google.maps.Map(a,{});return o.push(r),r},r=function(e,t){for(var n,a=0;a<o.length;a++){var r=o[a];if(r.id==t&&!r.inUse){var i=r.getDiv();e.appendChild(i),n=r;break}}return n},i=function(e){for(var t,n=0;n<o.length;n++){var a=o[n];if(!a.id&&!a.inUse){var r=a.getDiv();e.appendChild(r),t=a;break}}return t},s=function(e){var t=r(e,e.id)||i(e);return t?n(function(){google.maps.event.trigger(t,"idle")},100):t=a(e),t.inUse=!0,t},p=function(e){e.inUse=!1},c=function(){for(var e=0;e<o.length;e++)o[e]=null;o=[]},u=function(e){for(var t=0;t<o.length;t++)null!==o[t]&&o[t].id==e&&(o[t]=null,o.splice(t,1))},l=function(a,r,i){return t=a[0],e=r,n=i,{mapInstances:o,resetMapInstances:c,getMapInstance:s,returnMapInstance:p,deleteMapInstance:u}};l.$inject=["$document","$window","$timeout"],angular.module("ngMap").factory("NgMapPool",l)}(),function(){"use strict";var e,t,n,o,a,r,i,s,p={},c=function(n,o){var a;return n.currentStyle?a=n.currentStyle[o]:e.getComputedStyle&&(a=t.defaultView.getComputedStyle(n,null).getPropertyValue(o)),a},u=function(e){var t=p[e||0];return t.map instanceof google.maps.Map?void 0:(t.initializeMap(),t.map)},l=function(t,o){function a(n){var o=Object.keys(p),s=p[o[0]];
+t&&p[t]?r.resolve(p[t].map):!t&&s&&s.map?r.resolve(s.map):n>i?r.reject("could not find map"):e.setTimeout(function(){a(n+100)},100)}o=o||{},t="object"==typeof t?t.id:t;var r=n.defer(),i=o.timeout||1e4;return a(0),r.promise},g=function(e){if(e.map){var t=Object.keys(p).length;p[e.map.id||t]=e}},d=function(e){var t=Object.keys(p).length-1,n=e.map.id||t;if(e.map){for(var o in e.eventListeners){var a=e.eventListeners[o];google.maps.event.removeListener(a)}e.map.controls&&e.map.controls.forEach(function(e){e.clear()})}e.map.heatmapLayers&&Object.keys(e.map.heatmapLayers).forEach(function(t){e.deleteObject("heatmapLayers",e.map.heatmapLayers[t])}),s.deleteMapInstance(n),delete p[n]},m=function(e,t){var a=n.defer();return!e||e.match(/^current/i)?o.getCurrentPosition(t).then(function(e){var t=e.coords.latitude,n=e.coords.longitude,o=new google.maps.LatLng(t,n);a.resolve(o)},function(e){a.reject(e)}):r.geocode({address:e}).then(function(e){a.resolve(e[0].geometry.location)},function(e){a.reject(e)}),a.promise},f=function(e,t){return function(n){if(n){var o=i("set-"+e),r=a.toOptionValue(n,{key:e});t[o]&&(e.match(/center|position/)&&"string"==typeof r?m(r).then(function(e){t[o](e)}):t[o](r))}}},v=function(e){var t=e.getAttribute("default-style");"true"==t?(e.style.display="block",e.style.height="300px"):("block"!=c(e,"display")&&(e.style.display="block"),c(e,"height").match(/^(0|auto)/)&&(e.style.height="300px"))};angular.module("ngMap").provider("NgMap",function(){var p={};this.setDefaultOptions=function(e){p=e};var c=function(c,y,h,b,M,O,w,L){return e=c,t=y[0],n=h,o=b,a=M,r=O,i=w,s=L,{defaultOptions:p,addMap:g,deleteMap:d,getMap:l,initMap:u,setStyle:v,getGeoLocation:m,observeAndSet:f}};c.$inject=["$window","$document","$q","NavigatorGeolocation","Attr2MapOptions","GeoCoder","camelCaseFilter","NgMapPool"],this.$get=c})}(),function(){"use strict";var e,t=function(t,n){n=n||t.getCenter();var o=e.defer(),a=new google.maps.StreetViewService;return a.getPanoramaByLocation(n||t.getCenter,100,function(e,t){t===google.maps.StreetViewStatus.OK?o.resolve(e.location.pano):o.resolve(!1)}),o.promise},n=function(e,t){var n=new google.maps.StreetViewPanorama(e.getDiv(),{enableCloseButton:!0});n.setPano(t)},o=function(o){return e=o,{getPanorama:t,setPanorama:n}};o.$inject=["$q"],angular.module("ngMap").service("StreetView",o)}(),"ngMap"});
 /*
  * angular-ui-bootstrap
  * http://angular-ui.github.io/bootstrap/
@@ -57677,7 +61152,7 @@ angular.module('ui.bootstrap.datepickerPopup').run(function() {!angular.$$csp().
 angular.module('ui.bootstrap.tooltip').run(function() {!angular.$$csp().noInlineStyle && !angular.$$uibTooltipCss && angular.element(document).find('head').prepend('<style type="text/css">[uib-tooltip-popup].tooltip.top-left > .tooltip-arrow,[uib-tooltip-popup].tooltip.top-right > .tooltip-arrow,[uib-tooltip-popup].tooltip.bottom-left > .tooltip-arrow,[uib-tooltip-popup].tooltip.bottom-right > .tooltip-arrow,[uib-tooltip-popup].tooltip.left-top > .tooltip-arrow,[uib-tooltip-popup].tooltip.left-bottom > .tooltip-arrow,[uib-tooltip-popup].tooltip.right-top > .tooltip-arrow,[uib-tooltip-popup].tooltip.right-bottom > .tooltip-arrow,[uib-tooltip-html-popup].tooltip.top-left > .tooltip-arrow,[uib-tooltip-html-popup].tooltip.top-right > .tooltip-arrow,[uib-tooltip-html-popup].tooltip.bottom-left > .tooltip-arrow,[uib-tooltip-html-popup].tooltip.bottom-right > .tooltip-arrow,[uib-tooltip-html-popup].tooltip.left-top > .tooltip-arrow,[uib-tooltip-html-popup].tooltip.left-bottom > .tooltip-arrow,[uib-tooltip-html-popup].tooltip.right-top > .tooltip-arrow,[uib-tooltip-html-popup].tooltip.right-bottom > .tooltip-arrow,[uib-tooltip-template-popup].tooltip.top-left > .tooltip-arrow,[uib-tooltip-template-popup].tooltip.top-right > .tooltip-arrow,[uib-tooltip-template-popup].tooltip.bottom-left > .tooltip-arrow,[uib-tooltip-template-popup].tooltip.bottom-right > .tooltip-arrow,[uib-tooltip-template-popup].tooltip.left-top > .tooltip-arrow,[uib-tooltip-template-popup].tooltip.left-bottom > .tooltip-arrow,[uib-tooltip-template-popup].tooltip.right-top > .tooltip-arrow,[uib-tooltip-template-popup].tooltip.right-bottom > .tooltip-arrow,[uib-popover-popup].popover.top-left > .arrow,[uib-popover-popup].popover.top-right > .arrow,[uib-popover-popup].popover.bottom-left > .arrow,[uib-popover-popup].popover.bottom-right > .arrow,[uib-popover-popup].popover.left-top > .arrow,[uib-popover-popup].popover.left-bottom > .arrow,[uib-popover-popup].popover.right-top > .arrow,[uib-popover-popup].popover.right-bottom > .arrow,[uib-popover-html-popup].popover.top-left > .arrow,[uib-popover-html-popup].popover.top-right > .arrow,[uib-popover-html-popup].popover.bottom-left > .arrow,[uib-popover-html-popup].popover.bottom-right > .arrow,[uib-popover-html-popup].popover.left-top > .arrow,[uib-popover-html-popup].popover.left-bottom > .arrow,[uib-popover-html-popup].popover.right-top > .arrow,[uib-popover-html-popup].popover.right-bottom > .arrow,[uib-popover-template-popup].popover.top-left > .arrow,[uib-popover-template-popup].popover.top-right > .arrow,[uib-popover-template-popup].popover.bottom-left > .arrow,[uib-popover-template-popup].popover.bottom-right > .arrow,[uib-popover-template-popup].popover.left-top > .arrow,[uib-popover-template-popup].popover.left-bottom > .arrow,[uib-popover-template-popup].popover.right-top > .arrow,[uib-popover-template-popup].popover.right-bottom > .arrow{top:auto;bottom:auto;left:auto;right:auto;margin:0;}[uib-popover-popup].popover,[uib-popover-html-popup].popover,[uib-popover-template-popup].popover{display:block !important;}</style>'); angular.$$uibTooltipCss = true; });
 angular.module('ui.bootstrap.timepicker').run(function() {!angular.$$csp().noInlineStyle && !angular.$$uibTimepickerCss && angular.element(document).find('head').prepend('<style type="text/css">.uib-time input{width:50px;}</style>'); angular.$$uibTimepickerCss = true; });
 angular.module('ui.bootstrap.typeahead').run(function() {!angular.$$csp().noInlineStyle && !angular.$$uibTypeaheadCss && angular.element(document).find('head').prepend('<style type="text/css">[uib-typeahead-popup].dropdown-menu{display:block;}</style>'); angular.$$uibTypeaheadCss = true; });
-angular.module('app', ['ui.router', 'ui.bootstrap']);
+angular.module('app', ['ui.router', 'ui.bootstrap','ngMap']);
 
 angular.module('app')
     .constant('AccessLevels', {
@@ -57788,7 +61263,7 @@ angular.module('app')
     });
 
 angular.module('app')
-    .service('GifService', function($http) {
+    .service('camService', function($http) {
             return {
                 getAll: function() {
                     return $http.get('https://webcamstravel.p.mashape.com/webcams/list/bbox=48.9021449,2.4699208,48.815573,2.22419', {
@@ -57821,8 +61296,8 @@ angular.module('app')
 angular.module('app')
     .service('googleService', function($http) {
         return {
-            getAll: function() {
-                return $http.get('https://maps.googleapis.com/maps/api/js?key=AIzaSyBIGTb6ZS-IOh6w-_XyU7Of4bKdFZ_LCjQ&callback=initMap');
+            getMap: function() {
+                return $http.get('https://maps.googleapis.com/maps/api/js?key=AIzaSyBIGTb6ZS-IOh6w-_XyU7Of4bKdFZ_LCjQ&callback=initMap' );
             },
             getOne: function(id) {
                 return $http.get('/users/' + id);
@@ -57854,6 +61329,15 @@ angular.module('app')
         };
     });
 
+angular.module("app")
+    .controller('MyController', function(NgMap) {
+        NgMap.getMap().then(function(map) {
+            console.log(map.getCenter());
+            console.log('markers', map.markers);
+            console.log('shapes', map.shapes);
+        });
+    });
+
 angular.module('app')
     .controller('DashboardController', function($scope, CurrentUser, UserService) {
         UserService.getOne(CurrentUser.user()._id).then(function(res) {
@@ -57879,23 +61363,55 @@ angular.module('app')
 
 angular.module('app')
 
-    .controller('MainController', function($scope, camService, googleService,$sce) {
-      camService.getAll().then(function(res) {
+    .controller('MainController', function($scope, camService, googleService, $sce, ngMap) {
+        camService.getAll().then(function(res) {
             $scope.all = res.data;
+            console.log($scope.all);
             var id = $scope.all.result.webcams[0].id;
 
             console.log(id);
             $scope.show = 'https://api.lookr.com/embed/timelapse/' + id + '/lifetime?autoplay=1';
             $scope.trustSrc = function(src) {
-              return $sce.trustAsResourceUrl(src);
+                return $sce.trustAsResourceUrl(src);
             };
-            GifService.getAll().then(function(res) {
-                  $scope.all = res.data;
+        });
 
+        googleService.getMap().then(function(res) {
+            $scope.map = res.data;
+            console.log($scope.map);
 
         });
-    });
+        NgMap.getMap().then(function(map) {
+            console.log(map.getCenter());
+            console.log('markers', map.markers);
+            console.log('shapes', map.shapes);
+        });
+        angular.module('ngMaps').controller('MyCtrl', function() {
+    var vm=this;
+    vm.data =[
+      {foo:1, bar:1},
+      {foo:2, bar:2},
+      {foo:3, bar:3},
+      {foo:4, bar:4},
+      {foo:5, bar:5},
+      {foo:6, bar:6},
+      {foo:7, bar:7}
+    ];
+    vm.positions =[
+      {pos:[40.71, -74.21]},
+      {pos:[40.72, -74.20]},
+      {pos:[40.73, -74.19]},
+      {pos:[40.74, -74.18]},
+      {pos:[40.75, -74.17]},
+      {pos:[40.76, -74.16]},
+      {pos:[40.77, -74.15]}
+    ];
+    vm.showData = function() {
+      alert(this.data.foo);
+    }
   });
+
+    });
 
 angular.module('app')
     .controller('NavbarController', function($scope, Auth, CurrentUser) {
@@ -57965,7 +61481,7 @@ angular.module('app')
                 views: {
                     'content@': {
                         templateUrl: 'anon/main.html',
-                        controller: 'MainController'
+                        controller: 'MyController'
                     }
                 }
             })
@@ -57988,7 +61504,7 @@ angular.module('app')
                     }
                 }
             });
-          
+
         $stateProvider
             .state('user', {
                 abstract: true,
@@ -58034,6 +61550,16 @@ angular.module("app").run(["$templateCache", function($templateCache) {
     "\n" +
     "<iframe src=\"{{trustSrc(show)}}\" width=\"425\" height=\"344\"></iframe>\n" +
     "\n" +
+    "<div ng-controller=\"MyCtrl as vm\">\n" +
+    "    <ng-map zoom=\"11\" center=\"[40.74, -74.18]\">\n" +
+    "      <marker ng-repeat=\"p in vm.positions\"\n" +
+    "        position=\"{{p.pos}}\"\n" +
+    "        data=\"{{data[$index]}}\"\n" +
+    "        on-click=\"showData()\";\n" +
+    "        title=\"pos: {{p.pos}}\"></marker>\n" +
+    "    </ng-map>\n" +
+    "  </div>\n" +
+    "\n" +
     "<!-- <!DOCTYPE html>\n" +
     "<html>https://www.youtube.com/watch?v=qSjN6r9Up6g\n" +
     "  <head>\n" +
@@ -58057,13 +61583,13 @@ angular.module("app").run(["$templateCache", function($templateCache) {
     "  <body>\n" +
     "    <div id=\"map\"></div>\n" +
     "    <script>\n" +
-    "      var map;\n" +
-    "      function initMap() {\n" +
-    "        map = new google.maps.Map(document.getElementById('map'), {\n" +
-    "          center: {lat: -34.397, lng: 150.644},\n" +
-    "          zoom: 8\n" +
-    "        });\n" +
-    "      }\n" +
+    "    var map;\n" +
+    "    function initMap() {\n" +
+    "      map = new google.maps.Map(document.getElementById('map'), {\n" +
+    "        center: {lat: -34.397, lng: 150.644},\n" +
+    "        zoom: 8\n" +
+    "      });\n" +
+    "    }\n" +
     "\n" +
     "\n" +
     "    </script>\n" +
@@ -58093,7 +61619,9 @@ angular.module("app").run(["$templateCache", function($templateCache) {
   );
 
   $templateCache.put("anon/main.html",
-    ""
+    "<div map-lazy-load=\"https://maps.google.com/maps/api/js\">\n" +
+    "  <ng-map center=\"41,-87\" zoom=\"3\"></ng-map>\n" +
+    "</div>\n"
   );
 
   $templateCache.put("anon/navbar.html",

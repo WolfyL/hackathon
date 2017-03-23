@@ -28,7 +28,7 @@ angular.module('app')
                 views: {
                     'content@': {
                         templateUrl: 'anon/main.html',
-                        controller: 'MainController'
+                        controller: 'MyController'
                     }
                 }
             })
@@ -51,7 +51,7 @@ angular.module('app')
                     }
                 }
             });
-          
+
         $stateProvider
             .state('user', {
                 abstract: true,
