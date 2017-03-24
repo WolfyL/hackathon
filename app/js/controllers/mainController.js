@@ -1,7 +1,6 @@
 angular.module('app')
-
-    .controller('MainController', function($scope, camService, googleService, $sce ) {
-      var id = 0;
+    .controller('MainController', function($scope, camService, googleService, $sce) {
+        var id = 0;
 
         camService.getAll().then(function(res) {
             $scope.all = res.data;
@@ -17,9 +16,6 @@ angular.module('app')
         camService.getList().then(function(res) {
             $scope.list = res.data;
             console.log($scope.list);
-
-
-
-          });
+        });
     });
-  });
+});
