@@ -69,9 +69,12 @@ angular.module("app").run(["$templateCache", function($templateCache) {
   );
 
   $templateCache.put("anon/main.html",
-    "<div map-lazy-load=\"https://maps.google.com/maps/api/js\">\n" +
+    "<!-- <div map-lazy-load=\"https://maps.google.com/maps/api/js\">\n" +
     "  <ng-map center=\"48.4667, 1.0167\" zoom=\"4\"></ng-map>\n" +
-    "</div>\n"
+    "</div> -->\n" +
+    "<ng-map center=\"48.4667, 1.0167\" zoom=\"13\">\n" +
+    "  <marker ng-repeat=\"p in places track by $index\" position=\"{{p.lat}}, {{p.lng}}\"></marker>\n" +
+    "</ng-map>\n"
   );
 
   $templateCache.put("anon/navbar.html",

@@ -61289,14 +61289,21 @@ angular.module('app')
 
                 });
             },
-            getCam: function() {
-                return $http.get('https://webcamstravel.p.mashape.com/webcams/map/{ne_lat},{ne_lng},{sw_lat},{sw_lng},4', {
+            getCam: function(northLat, northLng, southLat, southLng) {
+              console.log(northLat);
+              console.log(northLng);
+              console.log(southLat);
+              console.log(southLng);
+                return $http.get('https://webcamstravel.p.mashape.com/webcams/map/limit=50,0/' + northLat +',' + northLng + ',' + southLat +',' + southLng + ',13', {
                     headers: {
                         "X-Mashape-Key": "ap9suFIZvbmshaHMD1BGMssRW13yp1OryvHjsn1RplKB42OTdT"
                     }
 
+
+
                 });
             },
+
 
         };
 
@@ -61308,8 +61315,8 @@ angular.module('app')
             getMap: function() {
                 return $http.get('https://maps.googleapis.com/maps/api/js?key=AIzaSyBIGTb6ZS-IOh6w-_XyU7Of4bKdFZ_LCjQ&callback=initMap' );
             },
-            getOne: function(id) {
-                return $http.get('/users/' + id);
+            getCoordo: function(city) {
+                return $http.get('https://maps.googleapis.com/maps/api/geocode/json?address=' + city +'&key=AIzaSyBIGTb6ZS-IOh6w-_XyU7Of4bKdFZ_LCjQ&callbac');
             },
             update: function(id, user) {
                 return $http.put('/users/' + id, user);
@@ -61339,30 +61346,65 @@ angular.module('app')
     });
 
 angular.module("app")
-    .controller('MyController', function(NgMap) {
+    .controller('MyController', function($scope, NgMap, googleService, camService) {
+        var city = "new york";
+        var northLat = "";
+        var northLng = "";
+        var southLat = "";
+        var southLng = "";
+        // $scope.lat = "";
+        // $scope.lng = "";
+        var url = "places.json";
         NgMap.getMap().then(function(map) {
             console.log(map.getCenter());
             // console.log('markers', map.markers);
             // console.log('shapes', map.shapes);
         });
-    //
-    //     var markers = [];
-    //
-    // for(var i=0; i< $scope.clientes.length; i++){
-    //     markers.push(crearMarcador(i));
-    // }
-    //
-    // var crearMarcador = function(i){
-    //     var marker = {
-    //             id: i,
-    //             idKey: "id",
-    //             latitude: $scope.clientes[i].latitud,
-    //             longitude: $scope.clientes[i].longitud,
-    //             show: false,
-    //             title: "<strong>Cod: </strong>" + $scope.clientes[i].codcliente +
-    //                     "<br><strong>Nombre: </strong>" + $scope.clientes[i].razonsocial + "<br><strong>Direccion: </strong>" + $scope.clientes[i].direccion
-    //         };
-    //       };
+        googleService.getCoordo(city).then(function(res) {
+            $scope.coord = res.data;
+            console.log($scope.coord);
+            $scope.lat = $scope.coord.results[0].geometry.location.lat.toFixed(3);
+            $scope.lng = $scope.coord.results[0].geometry.location.lng.toFixed(3);
+            console.log($scope.lat);
+            northLat = $scope.coord.results[0].geometry.viewport.northeast.lat.toFixed(3);
+            northLng = $scope.coord.results[0].geometry.viewport.northeast.lng.toFixed(3);
+            southLat = $scope.coord.results[0].geometry.viewport.southwest.lat.toFixed(3);
+            southLng = $scope.coord.results[0].geometry.viewport.southwest.lng.toFixed(3);
+            camService.getCam(northLat, northLng, southLat, southLng).then(function(res) {
+                $scope.square = res.data;
+                console.log($scope.square);
+
+
+
+
+                //  id = $scope.all.result.webcams[1].id;
+            });
+
+            //  id = $scope.all.result.webcams[1].id;
+        });
+
+      
+
+
+
+        //
+        //     var markers = [];
+        //
+        // for(var i=0; i< $scope.clientes.length; i++){
+        //     markers.push(crearMarcador(i));
+        // }
+        //
+        // var crearMarcador = function(i){
+        //     var marker = {
+        //             id: i,
+        //             idKey: "id",
+        //             latitude: $scope.clientes[i].latitud,
+        //             longitude: $scope.clientes[i].longitud,
+        //             show: false,
+        //             title: "<strong>Cod: </strong>" + $scope.clientes[i].codcliente +
+        //                     "<br><strong>Nombre: </strong>" + $scope.clientes[i].razonsocial + "<br><strong>Direccion: </strong>" + $scope.clientes[i].direccion
+        //         };
+        //       };
     });
 
 angular.module('app')
@@ -61407,7 +61449,7 @@ angular.module('app')
         camService.getList().then(function(res) {
             $scope.list = res.data;
             console.log($scope.list);
-            // id = $scope.all.result.webcams[3].id;
+
 
 
           });
@@ -61612,9 +61654,12 @@ angular.module("app").run(["$templateCache", function($templateCache) {
   );
 
   $templateCache.put("anon/main.html",
-    "<div map-lazy-load=\"https://maps.google.com/maps/api/js\">\n" +
+    "<!-- <div map-lazy-load=\"https://maps.google.com/maps/api/js\">\n" +
     "  <ng-map center=\"48.4667, 1.0167\" zoom=\"4\"></ng-map>\n" +
-    "</div>\n"
+    "</div> -->\n" +
+    "<ng-map center=\"48.4667, 1.0167\" zoom=\"13\">\n" +
+    "  <marker ng-repeat=\"p in places track by $index\" position=\"{{p.lat}}, {{p.lng}}\"></marker>\n" +
+    "</ng-map>\n"
   );
 
   $templateCache.put("anon/navbar.html",

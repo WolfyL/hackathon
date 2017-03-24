@@ -17,7 +17,7 @@ angular.module('app')
         camService.getList().then(function(res) {
             $scope.list = res.data;
             console.log($scope.list);
-            // id = $scope.all.result.webcams[3].id;
+
 
 
           });

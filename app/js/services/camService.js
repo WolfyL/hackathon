@@ -25,14 +25,21 @@ angular.module('app')
 
                 });
             },
-            getCam: function() {
-                return $http.get('https://webcamstravel.p.mashape.com/webcams/map/{ne_lat},{ne_lng},{sw_lat},{sw_lng},4', {
+            getCam: function(northLat, northLng, southLat, southLng) {
+              console.log(northLat);
+              console.log(northLng);
+              console.log(southLat);
+              console.log(southLng);
+                return $http.get('https://webcamstravel.p.mashape.com/webcams/map/limit=50,0/' + northLat +',' + northLng + ',' + southLat +',' + southLng + ',13', {
                     headers: {
                         "X-Mashape-Key": "ap9suFIZvbmshaHMD1BGMssRW13yp1OryvHjsn1RplKB42OTdT"
                     }
 
+
+
                 });
             },
+
 
         };
 
