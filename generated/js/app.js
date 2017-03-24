@@ -61264,34 +61264,43 @@ angular.module('app')
 
 angular.module('app')
     .service('camService', function($http) {
-            return {
-                getAll: function() {
-                    return $http.get('https://webcamstravel.p.mashape.com/webcams/list/bbox=48.9021449,2.4699208,48.815573,2.22419', {
-                                headers: {
-                                    "X-Mashape-Key": "ap9suFIZvbmshaHMD1BGMssRW13yp1OryvHjsn1RplKB42OTdT"}
-                            });
-                        },
-                        //
-                        //     getX: function(n) {
-                        //         return $http.get('http://api.giphy.com/v1/gifs/search?q=sexy+girl&api_key=dc6zaTOxFJmzC&limit=' + n);
-                        //     },
-                        //     getOne: function(id) {
-                        //         return $http.get('http://api.giphy.com/v1/gifs/search?q=sexy+girl&api_key=dc6zaTOxFJmzC' + id);
-                        //     },
-                        //     getSearch : function(search){
-                        //         return $http.get('http://api.giphy.com/v1/gifs/search?q=' + search + '&api_key=dc6zaTOxFJmzC&limit=100');
-                        //     },
-                        //     getLucky: function() {
-                        //         return $http.get('http://api.giphy.com/v1/gifs/random?api_key=dc6zaTOxFJmzC');
-                        //     },
-                        //     update: function(id, user) {
-                        //         return $http.put('http://api.giphy.com/v1/gifs/search?q=sexy+girl&api_key=dc6zaTOxFJmzC' + id, user);
-                        //     },
-                        //     delete: function(id) {
-                        //         return $http.delete('http://api.giphy.com/v1/gifs/search?q=sexy+girl&api_key=dc6zaTOxFJmzC' + id);
-                        //     }
-                };
-            });
+        return {
+            getAll: function() {
+                return $http.get('https://webcamstravel.p.mashape.com/webcams/list/bbox=48.9021449,2.4699208,48.815573,2.22419', {
+                    headers: {
+                        "X-Mashape-Key": "ap9suFIZvbmshaHMD1BGMssRW13yp1OryvHjsn1RplKB42OTdT"
+                    }
+
+                });
+            },
+            getList: function() {
+                return $http.get('https://webcamstravel.p.mashape.com/webcams/list/limit=50,0', {
+                    headers: {
+                        "X-Mashape-Key": "ap9suFIZvbmshaHMD1BGMssRW13yp1OryvHjsn1RplKB42OTdT"
+                    }
+
+                });
+            },
+            getExclude: function() {
+                return $http.get('https://webcamstravel.p.mashape.com/webcams/list//exclude={webcamid}', {
+                    headers: {
+                        "X-Mashape-Key": "ap9suFIZvbmshaHMD1BGMssRW13yp1OryvHjsn1RplKB42OTdT"
+                    }
+
+                });
+            },
+            getCam: function() {
+                return $http.get('https://webcamstravel.p.mashape.com/webcams/map/{ne_lat},{ne_lng},{sw_lat},{sw_lng},4', {
+                    headers: {
+                        "X-Mashape-Key": "ap9suFIZvbmshaHMD1BGMssRW13yp1OryvHjsn1RplKB42OTdT"
+                    }
+
+                });
+            },
+
+        };
+
+    });
 
 angular.module('app')
     .service('googleService', function($http) {
@@ -61333,9 +61342,27 @@ angular.module("app")
     .controller('MyController', function(NgMap) {
         NgMap.getMap().then(function(map) {
             console.log(map.getCenter());
-            console.log('markers', map.markers);
-            console.log('shapes', map.shapes);
+            // console.log('markers', map.markers);
+            // console.log('shapes', map.shapes);
         });
+    //
+    //     var markers = [];
+    //
+    // for(var i=0; i< $scope.clientes.length; i++){
+    //     markers.push(crearMarcador(i));
+    // }
+    //
+    // var crearMarcador = function(i){
+    //     var marker = {
+    //             id: i,
+    //             idKey: "id",
+    //             latitude: $scope.clientes[i].latitud,
+    //             longitude: $scope.clientes[i].longitud,
+    //             show: false,
+    //             title: "<strong>Cod: </strong>" + $scope.clientes[i].codcliente +
+    //                     "<br><strong>Nombre: </strong>" + $scope.clientes[i].razonsocial + "<br><strong>Direccion: </strong>" + $scope.clientes[i].direccion
+    //         };
+    //       };
     });
 
 angular.module('app')
@@ -61363,55 +61390,29 @@ angular.module('app')
 
 angular.module('app')
 
-    .controller('MainController', function($scope, camService, googleService, $sce, ngMap) {
+    .controller('MainController', function($scope, camService, googleService, $sce ) {
+      var id = 0;
+
         camService.getAll().then(function(res) {
             $scope.all = res.data;
             console.log($scope.all);
-            var id = $scope.all.result.webcams[0].id;
+             id = $scope.all.result.webcams[1].id;
 
             console.log(id);
             $scope.show = 'https://api.lookr.com/embed/timelapse/' + id + '/lifetime?autoplay=1';
             $scope.trustSrc = function(src) {
                 return $sce.trustAsResourceUrl(src);
             };
-        });
 
-        googleService.getMap().then(function(res) {
-            $scope.map = res.data;
-            console.log($scope.map);
+        camService.getList().then(function(res) {
+            $scope.list = res.data;
+            console.log($scope.list);
+            // id = $scope.all.result.webcams[3].id;
 
-        });
-        NgMap.getMap().then(function(map) {
-            console.log(map.getCenter());
-            console.log('markers', map.markers);
-            console.log('shapes', map.shapes);
-        });
-        angular.module('ngMaps').controller('MyCtrl', function() {
-    var vm=this;
-    vm.data =[
-      {foo:1, bar:1},
-      {foo:2, bar:2},
-      {foo:3, bar:3},
-      {foo:4, bar:4},
-      {foo:5, bar:5},
-      {foo:6, bar:6},
-      {foo:7, bar:7}
-    ];
-    vm.positions =[
-      {pos:[40.71, -74.21]},
-      {pos:[40.72, -74.20]},
-      {pos:[40.73, -74.19]},
-      {pos:[40.74, -74.18]},
-      {pos:[40.75, -74.17]},
-      {pos:[40.76, -74.16]},
-      {pos:[40.77, -74.15]}
-    ];
-    vm.showData = function() {
-      alert(this.data.foo);
-    }
-  });
 
+          });
     });
+  });
 
 angular.module('app')
     .controller('NavbarController', function($scope, Auth, CurrentUser) {
@@ -61550,15 +61551,7 @@ angular.module("app").run(["$templateCache", function($templateCache) {
     "\n" +
     "<iframe src=\"{{trustSrc(show)}}\" width=\"425\" height=\"344\"></iframe>\n" +
     "\n" +
-    "<div ng-controller=\"MyCtrl as vm\">\n" +
-    "    <ng-map zoom=\"11\" center=\"[40.74, -74.18]\">\n" +
-    "      <marker ng-repeat=\"p in vm.positions\"\n" +
-    "        position=\"{{p.pos}}\"\n" +
-    "        data=\"{{data[$index]}}\"\n" +
-    "        on-click=\"showData()\";\n" +
-    "        title=\"pos: {{p.pos}}\"></marker>\n" +
-    "    </ng-map>\n" +
-    "  </div>\n" +
+    "\n" +
     "\n" +
     "<!-- <!DOCTYPE html>\n" +
     "<html>https://www.youtube.com/watch?v=qSjN6r9Up6g\n" +
@@ -61620,7 +61613,7 @@ angular.module("app").run(["$templateCache", function($templateCache) {
 
   $templateCache.put("anon/main.html",
     "<div map-lazy-load=\"https://maps.google.com/maps/api/js\">\n" +
-    "  <ng-map center=\"41,-87\" zoom=\"3\"></ng-map>\n" +
+    "  <ng-map center=\"48.4667, 1.0167\" zoom=\"4\"></ng-map>\n" +
     "</div>\n"
   );
 

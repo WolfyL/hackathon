@@ -8,15 +8,7 @@ angular.module("app").run(["$templateCache", function($templateCache) {
     "\n" +
     "<iframe src=\"{{trustSrc(show)}}\" width=\"425\" height=\"344\"></iframe>\n" +
     "\n" +
-    "<div ng-controller=\"MyCtrl as vm\">\n" +
-    "    <ng-map zoom=\"11\" center=\"[40.74, -74.18]\">\n" +
-    "      <marker ng-repeat=\"p in vm.positions\"\n" +
-    "        position=\"{{p.pos}}\"\n" +
-    "        data=\"{{data[$index]}}\"\n" +
-    "        on-click=\"showData()\";\n" +
-    "        title=\"pos: {{p.pos}}\"></marker>\n" +
-    "    </ng-map>\n" +
-    "  </div>\n" +
+    "\n" +
     "\n" +
     "<!-- <!DOCTYPE html>\n" +
     "<html>https://www.youtube.com/watch?v=qSjN6r9Up6g\n" +
@@ -78,7 +70,7 @@ angular.module("app").run(["$templateCache", function($templateCache) {
 
   $templateCache.put("anon/main.html",
     "<div map-lazy-load=\"https://maps.google.com/maps/api/js\">\n" +
-    "  <ng-map center=\"41,-87\" zoom=\"3\"></ng-map>\n" +
+    "  <ng-map center=\"48.4667, 1.0167\" zoom=\"4\"></ng-map>\n" +
     "</div>\n"
   );
 
