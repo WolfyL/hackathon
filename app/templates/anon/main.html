@@ -1,4 +1,7 @@
 
 <ng-map center="40.496, -74.256" zoom="10">
-  <marker  ng-repeat="mark in marks.data" position="40.496,-74.256"></marker>
+  <!-- <marker  ng-repeat="mark in marks.data" position="40.496,-74.256"></marker> -->
+  <div id="class" ng-repeat="marker in markers | orderBy : 'title'">
+         <a href="#" ng-click="openInfoWindow($event, marker)">{{marker.title}}</a>
+    </div>
 </ng-map>

@@ -61356,21 +61356,23 @@ angular.module("app")
             northLng = $scope.coord.results[0].geometry.viewport.northeast.lng.toFixed(3);
             southLat = $scope.coord.results[0].geometry.viewport.southwest.lat.toFixed(3);
             southLng = $scope.coord.results[0].geometry.viewport.southwest.lng.toFixed(3);
-            recup();
+            // recup();
         });
 
-        function recup() {
-            camService.getCam(northLat, northLng, southLat, southLng).then(function(res) {
-                $scope.square = res.data;
+        // function recup() {
+        //     camService.getCam(northLat, northLng, southLat, southLng).then(function(res) {
+        //         $scope.square = res.data;
+        //
+        //         var i;
+        //         $scope.marks = $scope.square.result.webcams[i];
+        //         console.log($scope.mark);
+        //
+        //         console.log($scope.square);
+        //
+        //     });
+        // }
+      
 
-                var i;
-                $scope.marks = $scope.square.result.webcams[i];
-                console.log($scope.mark);
-
-                console.log($scope.square);
-
-            });
-        }
     });
 
 angular.module('app')
@@ -61618,7 +61620,10 @@ angular.module("app").run(["$templateCache", function($templateCache) {
   $templateCache.put("anon/main.html",
     "\n" +
     "<ng-map center=\"40.496, -74.256\" zoom=\"10\">\n" +
-    "  <marker  ng-repeat=\"mark in marks.data\" position=\"40.496,-74.256\"></marker>\n" +
+    "  <!-- <marker  ng-repeat=\"mark in marks.data\" position=\"40.496,-74.256\"></marker> -->\n" +
+    "  <div id=\"class\" ng-repeat=\"marker in markers | orderBy : 'title'\">\n" +
+    "         <a href=\"#\" ng-click=\"openInfoWindow($event, marker)\">{{marker.title}}</a>\n" +
+    "    </div>\n" +
     "</ng-map>\n"
   );
 

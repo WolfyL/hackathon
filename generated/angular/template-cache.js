@@ -71,7 +71,10 @@ angular.module("app").run(["$templateCache", function($templateCache) {
   $templateCache.put("anon/main.html",
     "\n" +
     "<ng-map center=\"40.496, -74.256\" zoom=\"10\">\n" +
-    "  <marker  ng-repeat=\"mark in marks.data\" position=\"40.496,-74.256\"></marker>\n" +
+    "  <!-- <marker  ng-repeat=\"mark in marks.data\" position=\"40.496,-74.256\"></marker> -->\n" +
+    "  <div id=\"class\" ng-repeat=\"marker in markers | orderBy : 'title'\">\n" +
+    "         <a href=\"#\" ng-click=\"openInfoWindow($event, marker)\">{{marker.title}}</a>\n" +
+    "    </div>\n" +
     "</ng-map>\n"
   );
 

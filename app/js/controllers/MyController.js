@@ -22,19 +22,21 @@ angular.module("app")
             northLng = $scope.coord.results[0].geometry.viewport.northeast.lng.toFixed(3);
             southLat = $scope.coord.results[0].geometry.viewport.southwest.lat.toFixed(3);
             southLng = $scope.coord.results[0].geometry.viewport.southwest.lng.toFixed(3);
-            recup();
+            // recup();
         });
 
-        function recup() {
-            camService.getCam(northLat, northLng, southLat, southLng).then(function(res) {
-                $scope.square = res.data;
+        // function recup() {
+        //     camService.getCam(northLat, northLng, southLat, southLng).then(function(res) {
+        //         $scope.square = res.data;
+        //
+        //         var i;
+        //         $scope.marks = $scope.square.result.webcams[i];
+        //         console.log($scope.mark);
+        //
+        //         console.log($scope.square);
+        //
+        //     });
+        // }
+      
 
-                var i;
-                $scope.marks = $scope.square.result.webcams[i];
-                console.log($scope.mark);
-
-                console.log($scope.square);
-
-            });
-        }
     });
